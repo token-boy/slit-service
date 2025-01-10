@@ -12,6 +12,7 @@ declare module '@db/redis' {
 export const r = createLazyClient({
   hostname: Deno.env.get('REDIS_HOSTNAME') ?? '127.0.0.1',
   port: Deno.env.get('REDIS_PORT'),
+  username: Deno.env.get('REDIS_USERNAME'),
   password: Deno.env.get('REDIS_PASSWORD'),
 })
 

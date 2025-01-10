@@ -68,7 +68,11 @@ class GameController {
     tx.sign([dealer])
 
     const gsKey = Math.random().toString(36).slice(2)
-    await r.setJSON(`gs:${gsKey}`, { boardId: board.id })
+    await r.setJSON(`gs:${gsKey}`, {
+      boardId: board.id,
+      chips: payload.chips,
+      owner: ctx.profile.address,
+    })
 
     return { tx: encodeBase64(tx.serialize()), gsKey }
   }

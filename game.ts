@@ -1,5 +1,4 @@
 import log from 'helpers/log.ts'
-import { Buffer } from 'node:buffer'
 import { r } from 'helpers/redis.ts'
 import { cPlayers, Player } from 'models'
 import { WithId } from 'mongodb'
@@ -20,40 +19,26 @@ const conns: Dict<WebSocket> = {}
 
 async function handleReady(player: WithId<Player>, boardId: string) {
   const key = `board:${boardId}:players`
-  await r.hset(key, player.address, JSON.stringify({ startingHands: [0, 0] }))
+  await r.hset(key, player.address, JSON.stringify({ hands: [0, 0] }))
 
   const len = await r.hlen(key)
   if (len >= 2) {
     const states = await r.hgetall(key)
 
-    // Sync states
-
-    for (let i = 0; i < 2; ) {
-      const address = states[i++]
-      const a = Buffer.from(address)
-      a.write
-
-      const state = JSON.parse(states[i++])
+    for (let i = 0; i < states.length; i += 2) {
+      const address = states[i]
+      // const state = JSON.parse(states[i+1])
       const ws = conns[address]
       if (ws) {
-        ws.send(new Uint8Array([GameCode.Sync, ...Buffer.from(state)]))
-      }
-    }
-
-    for (const [address, state] of Object.entries(states)) {
-      const ws = conns[address]
-      if (ws) {
-        ws.send(new Uint8Array([GameCode.Sync, ...Buffer.from(state)]))
+        ws.send(JSON.stringify({ code: GameCode.Join, address }))
       }
     }
   }
 }
 
 export function handleSocket(ws: WebSocket, gsKey: string, ctx: Ctx) {
-  const { address: owner } = ctx.profile
-
   ws.onopen = async () => {
-    const { boardId } = await r.getJSON(`gs:${gsKey}`)
+    const { boardId, owner } = await r.getJSON(`gs:${gsKey}`)
     const player = await cPlayers.findOne({ owner })
     if (!player) {
       ws.send(JSON.stringify({ code: GameError.PlayerNotFound }))
@@ -65,10 +50,9 @@ export function handleSocket(ws: WebSocket, gsKey: string, ctx: Ctx) {
     log.info(`Connected: ${address} ${ctx.request.ip}`)
 
     ws.onmessage = async (e) => {
-      const message = Buffer.from(e.data)
-      const code = message.readUint8()
+      const message = JSON.parse(e.data)
 
-      if (code === GameCode.Ready) {
+      if (message.code === GameCode.Ready) {
         await handleReady(player, boardId)
       }
     }
@@ -78,7 +62,7 @@ export function handleSocket(ws: WebSocket, gsKey: string, ctx: Ctx) {
 export enum GameCode {
   Error = 0,
   Ready = 1,
-  Sync = 2,
+  Join = 2,
 }
 
 export enum GameError {

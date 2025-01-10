@@ -76,7 +76,9 @@ class ChipsController {
     })
     const tx = await buildTx(player, [ix])
 
-    return encodeBase64(tx.serialize())
+    return {
+      tx: encodeBase64(tx.serialize())
+    }
   }
 
   @Post()
