@@ -4,6 +4,7 @@ import initRoutes from 'controllers'
 import { cors } from 'middlewares'
 import { r } from 'helpers/redis.ts'
 import log from 'helpers/log.ts'
+import nats from "helpers/nats.ts";
 
 const app = new Application()
 const router = new Router()
@@ -17,6 +18,7 @@ const port = parseInt(Deno.env.get('PORT') ?? '8000')
 
 try {
   await r.connect()
+  await nats.connect()
 
   log.info(`Listening on http://localhost:${port}`)
 

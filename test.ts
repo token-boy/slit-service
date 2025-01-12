@@ -1,8 +1,5 @@
-import { r } from "helpers/redis.ts";
+import nats from "helpers/nats.ts";
 
-
-await r.hset('test', 'foo', 'bar')
-await r.hset('test', 'oof', 'rab')
-
-const all = await r.hmget('test', 'oof', 'xxx', 'foo')
-console.log(all);
+await nats.connect()
+await nats.js().publish('455brqe0f4t', JSON.stringify({ hands: [0, 1] }))
+await nats.drain()

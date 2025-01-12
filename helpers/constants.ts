@@ -37,3 +37,5 @@ export const TREASURY_PDA = new PublicKey(
 export const FEE_VAULT_PDA = new PublicKey(
   '4M8D7JypYCz24biaYcy6AiuXuuYVHeH6fooNbFhKMAgk'
 )
+
+export const MAX_PLAYERS = 10

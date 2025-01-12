@@ -3,7 +3,8 @@
     "start": "deno run --allow-net --allow-env --allow-read --allow-sys --allow-ffi main.ts",
     "dev": "deno run --allow-net --allow-env --allow-read --allow-sys --allow-ffi --env-file=.env --watch main.ts",
     "test": "deno run --allow-net --allow-env --allow-read --allow-sys --allow-ffi --env-file=.env --watch test.ts",
-    "signtx": "deno run --allow-env --allow-read --allow-sys --allow-ffi --allow-net --env-file=.env scripts/sign_tx.ts"
+    "sign-tx": "deno run --allow-env --allow-read --allow-sys --allow-ffi scripts/sign_tx.ts",
+    "init-nats": "deno run --allow-env --allow-net --env-file=.env scripts/init_nats.ts"
   },
   "nodeModulesDir": "auto",
   "compilerOptions": {
@@ -15,6 +16,8 @@
   },
   "imports": {
     "@db/redis": "jsr:@db/redis@^0.37.1",
+    "@nats-io/jetstream": "jsr:@nats-io/jetstream@^3.0.0-35",
+    "@nats-io/transport-deno": "jsr:@nats-io/transport-deno@^3.0.0-20",
     "@oak/oak": "jsr:@oak/oak@^14.2.0",
     "@std/encoding": "jsr:@std/encoding@^1.0.6",
     "@std/log": "jsr:@std/log@^0.224.12",
