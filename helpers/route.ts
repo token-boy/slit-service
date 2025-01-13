@@ -56,7 +56,7 @@ export function Patch(path = '', ...mws: Function[]) {
   return Route('PATCH', path, parseBody, ...mws)
 }
 
-export function Payload(zodSchema: z.AnyZodObject) {
+export function Payload(Schema: z.AnyZodObject) {
   return function (
     _target: Object,
     _propertyKey: string,
@@ -65,13 +65,13 @@ export function Payload(zodSchema: z.AnyZodObject) {
     const method = descriptor.value
     descriptor.value = function (ctx: Ctx) {
       const body = ctx.payload
-      const payload = zodSchema.parse(body)
+      const payload = Schema.parse(body)
       return method.apply(this, [payload, ctx])
     }
   }
 }
 
-export function QueryParams(zodSchema: z.AnyZodObject) {
+export function QueryParams(Schema: z.AnyZodObject) {
   return function (
     _target: Object,
     _propertyKey: string,
@@ -82,7 +82,7 @@ export function QueryParams(zodSchema: z.AnyZodObject) {
       const queryParams = Object.fromEntries(
         ctx.request.url.searchParams.entries()
       )
-      const payload = zodSchema.parse(queryParams)
+      const payload = Schema.parse(queryParams)
       return method.apply(this, [payload, ctx])
     }
   }

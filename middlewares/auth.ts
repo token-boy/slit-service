@@ -21,8 +21,8 @@ const key = await crypto.subtle.importKey(
 
 /**
  * Handling authentication.
+ * 
  * @param ctx
- * @param next
  */
 async function auth(ctx: Ctx) {
   const token = ctx.request.headers.get('Authorization') ?? ''

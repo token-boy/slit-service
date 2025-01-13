@@ -8,17 +8,17 @@ import { eventEmitter } from 'helpers/game.ts'
 import { PROGRAM_ID } from 'helpers/constants.ts'
 import { Http400 } from "helpers/http.ts";
 
-const createPayloadSchema = z.object({
+const CreatePayloadSchema = z.object({
   tx: z.string(),
 })
-type CreatePayload = z.infer<typeof createPayloadSchema>
+type CreatePayload = z.infer<typeof CreatePayloadSchema>
 
 @Controller('/v1/txs')
 class TxController {
   constructor() {}
 
   @Post()
-  @Payload(createPayloadSchema)
+  @Payload(CreatePayloadSchema)
   async create(payload: CreatePayload) {
     const tx = VersionedTransaction.deserialize(decodeBase64(payload.tx))
 

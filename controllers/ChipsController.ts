@@ -28,10 +28,10 @@ import { Http400 } from 'helpers/http.ts'
 import { getPlayerAddress, U64 } from 'helpers/game.ts'
 import auth from '../middlewares/auth.ts'
 
-const swapPayloadSchema = z.object({
+const SwapPayloadSchema = z.object({
   amount: z.string(),
 })
-type SwapPayload = z.infer<typeof swapPayloadSchema>
+type SwapPayload = z.infer<typeof SwapPayloadSchema>
 
 @Controller('/v1/chips', auth)
 class ChipsController {
@@ -82,13 +82,13 @@ class ChipsController {
   }
 
   @Post()
-  @Payload(swapPayloadSchema)
+  @Payload(SwapPayloadSchema)
   deposit(payload: SwapPayload, ctx: Ctx) {
     return this.swap(ctx.profile.address, SwapSide.Deposit, payload.amount)
   }
 
   @Delete()
-  @QueryParams(swapPayloadSchema)
+  @QueryParams(SwapPayloadSchema)
   withdraw(payload: SwapPayload, ctx: Ctx) {
     return this.swap(ctx.profile.address, SwapSide.Withdraw, payload.amount)
   }

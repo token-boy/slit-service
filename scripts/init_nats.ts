@@ -7,7 +7,7 @@ const jsm = nats.jsm()
 
 await jsm.streams.add({
   name: 'game',
-  subjects: ['gs.*'],
+  subjects: ['gs.*', 'states.*'],
   max_bytes: -1,
   retention: RetentionPolicy.Workqueue,
 })

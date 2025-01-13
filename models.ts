@@ -1,7 +1,7 @@
 import { MongoClient } from 'mongodb'
 
-const client = new MongoClient(Deno.env.get('MONGO_URI') as string)
-const db = client.db('slit')
+export const mClient = new MongoClient(Deno.env.get('MONGO_URI') as string)
+const db = mClient.db('slit')
 
 export interface Player {
   owner: string

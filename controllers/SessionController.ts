@@ -11,19 +11,19 @@ import { encoder } from 'helpers/game.ts'
 import { createAccessToken } from '../middlewares/auth.ts'
 import { cPlayers } from 'models'
 
-const createPayloadSchama = z.object({
+const CreatePayloadSchama = z.object({
   address: z.string(),
   timestamp: z.string(),
   signature: z.string(),
 })
-type CreatePayload = z.infer<typeof createPayloadSchama>
+type CreatePayload = z.infer<typeof CreatePayloadSchama>
 
 @Controller('/v1/sessions')
 class SessionController {
   constructor() {}
 
   @Post()
-  @Payload(createPayloadSchama)
+  @Payload(CreatePayloadSchama)
   async create(payload: CreatePayload) {
     const now = Date.now()
     const timestamp = parseInt(payload.timestamp)

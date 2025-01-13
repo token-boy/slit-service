@@ -9,7 +9,12 @@ docker run --detach \
   --label=traefik.enable=true \
   --label=traefik.http.routers.nats.rule=Host\(\`nats.mxsyx.site\`\) \
   --label=traefik.http.routers.nats.tls.certResolver=letsencrypt \
+  --label=traefik.http.routers.nats.service=nats \
   --label=traefik.http.services.nats.loadbalancer.server.port=80 \
+  --label=traefik.http.routers.nats-ui.rule=Host\(\`nats-ui.mxsyx.site\`\) \
+  --label=traefik.http.routers.nats-ui.tls.certResolver=letsencrypt \
+  --label=traefik.http.routers.nats-ui.service=nats-ui \
+  --label=traefik.http.services.nats-ui.loadbalancer.server.port=8222 \
   nats:latest
 
 nsc edit account -n Default --js-enable 1
@@ -23,8 +28,8 @@ nsc edit account -n Default \
 
 nsc delete user -n player
 nsc add user --name player
-nsc edit user -n player --allow-pub "\$JS.API.CONSUMER.INFO.game.*" 
-nsc edit user -n player --allow-pub "\$JS.API.CONSUMER.MSG.NEXT.game.*" 
+nsc edit user -n player --allow-pub "\$JS.API.CONSUMER.INFO.>" 
+nsc edit user -n player --allow-pub "\$JS.API.CONSUMER.MSG.NEXT.>" 
 nsc edit user -n player --allow-pub "\$JS.ACK.game.>"
 cat ~/.local/share/nats/nsc/keys/creds/memory/Default/player.creds
 

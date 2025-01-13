@@ -31,12 +31,16 @@ export interface GameSession {
   ready: boolean
 }
 
-export interface GameState {
+export interface PlayerState {
   hands: [number, number]
   chips: number
 }
 
-export function GS(zodSchema: z.AnyZodObject) {
+export interface GlobalState {
+  players: PlayerState[]
+}
+
+export function Seat(Schame: z.AnyZodObject) {
   return function (
     // deno-lint-ignore ban-types
     _target: Object,
@@ -46,14 +50,14 @@ export function GS(zodSchema: z.AnyZodObject) {
     const method = descriptor.value
     descriptor.value = async function (ctx: Ctx) {
       const body = ctx.payload
-      const payload = zodSchema.parse(body)
+      const payload = Schame.parse(body)
 
-      const gs = await r.getJSON(`gs:${ctx.payload.gsKey}`)
+      const gs = await r.getJSON(`gs:${ctx.payload.seatKey}`)
       if (!gs) {
-        throw new Http404('Game session invalid')
+        throw new Http404('Seat key invalid')
       }
       if (!gs.ready) {
-        throw new Http404('Game session not ready')
+        throw new Http404('Seat not ready')
       }
 
       return method.apply(this, [gs, payload, ctx])
@@ -97,7 +101,6 @@ export async function checkTx(signature: string, instructionCode: number) {
 
   return { staticAccountKeys, instruction }
 }
-
 
 export function shuffle(cards?: number[]) {
   if (!cards) {

@@ -9,12 +9,16 @@ declare module '@db/redis' {
   }
 }
 
-export const r = createLazyClient({
+const options = {
   hostname: Deno.env.get('REDIS_HOSTNAME') ?? '127.0.0.1',
   port: Deno.env.get('REDIS_PORT'),
   username: Deno.env.get('REDIS_USERNAME'),
   password: Deno.env.get('REDIS_PASSWORD'),
-})
+}
+
+export const r = createLazyClient(options)
+
+export const rSub = createLazyClient(options)
 
 r.setJSON = (key: string, value: any) => {
   return r.set(key, JSON.stringify(value))

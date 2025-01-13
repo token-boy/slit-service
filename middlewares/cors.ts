@@ -1,4 +1,4 @@
-import { Context, Next } from "@oak/oak"
+import { Context, Next } from '@oak/oak'
 
 // Allow cors origins.
 const allowOrigins = JSON.parse(
@@ -18,6 +18,7 @@ async function cors(ctx: Context, next: Next) {
       'Access-Control-Allow-Methods',
       'OPTIONS, POST, DELETE, PUT, DELETE, PATCH'
     )
+    ctx.response.headers.set('Access-Control-Allow-Credentials', 'true')
     if (ctx.request.method === 'OPTIONS') {
       ctx.response.status = 200
     } else {

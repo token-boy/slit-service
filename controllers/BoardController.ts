@@ -16,34 +16,51 @@ import auth from '../middlewares/auth.ts'
 import { cBoards, cKeypairs } from 'models'
 import { encodeBase58 } from '@std/encoding'
 import { z } from 'zod'
+import nats from 'helpers/nats.ts'
+import {} from '@nats-io/jetstream/internal'
+import { AckPolicy, DiscardPolicy, RetentionPolicy } from '@nats-io/jetstream'
+import log from "helpers/log.ts";
 
-const createPayloadSchama = z.object({
+const CreatePayloadSchama = z.object({
   minChips: z.number(),
 })
-type CreatePayload = z.infer<typeof createPayloadSchama>
+type CreatePayload = z.infer<typeof CreatePayloadSchama>
 
 @Controller('/v1/boards')
 class BoardController {
   constructor() {
     eventEmitter.on(
       `tx-confirmed-${Instruction.Create}`,
-      (_accounts: PublicKey[], data: Uint8Array) => {
-        cBoards.updateOne(
-          {
-            id: Buffer.from(data).toString('hex'),
-          },
-          {
-            $set: {
-              enabled: true,
-            },
-          }
-        )
-      }
+      this.#handleCreateConfirmed
     )
   }
 
+  #handleCreateConfirmed(_accounts: PublicKey[], data: Uint8Array) {
+    try {
+      const id = Buffer.from(data).toString('hex')
+      cBoards.updateOne(
+        { id },
+        {
+          $set: {
+            enabled: true,
+          },
+        }
+      )
+  
+      nats.jsm().streams.add({
+        name: `states_${id}`,
+        subjects: ['states.*'],
+        max_bytes: -1,
+        retention: RetentionPolicy.Limits,
+        discard: DiscardPolicy.Old,
+      })
+    } catch (error) {
+      log.error(error)
+    }
+  }
+
   @Post('', auth)
-  @Payload(createPayloadSchama)
+  @Payload(CreatePayloadSchama)
   async create(payload: CreatePayload, ctx: Ctx) {
     const signer = new PublicKey(ctx.profile.address)
 

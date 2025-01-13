@@ -7,60 +7,61 @@ import {
 import { Buffer } from 'node:buffer'
 import { z } from 'zod'
 
-import { Controller, Payload, Post } from 'helpers/route.ts'
+import { Controller, Get, Payload, Post } from 'helpers/route.ts'
 import { cBoards, cKeypairs } from 'models'
 import { Http400, Http404 } from 'helpers/http.ts'
 import { Instruction, MAX_PLAYERS, PROGRAM_ID } from 'helpers/constants.ts'
 import {
   type GameSession,
-  GameState,
+  PlayerState,
   getPlayerAddress,
-  GS,
+  Seat,
   shuffle,
   U64,
+  GlobalState,
 } from 'helpers/game.ts'
 import { decodeBase58, encodeBase64 } from '@std/encoding'
 import { buildTx } from 'helpers/solana.ts'
-import { r } from 'helpers/redis.ts'
+import { r, rSub } from 'helpers/redis.ts'
 import { eventEmitter } from 'helpers/game.ts'
 
 import auth from '../middlewares/auth.ts'
-import { AckPolicy } from '@nats-io/jetstream'
+import { AckPolicy, DeliverPolicy } from '@nats-io/jetstream'
 import nats from 'helpers/nats.ts'
 import log from 'helpers/log.ts'
 
-const playPayloadSchema = z.object({
-  boardId: z.string(),
+const PlayPayloadSchema = z.object({
   chips: z.number().nonnegative(),
 })
-type PlayPayload = z.infer<typeof playPayloadSchema>
+type PlayPayload = z.infer<typeof PlayPayloadSchema>
 
-const readyPayloadSchema = z.object({
-  gsKey: z.string(),
+const ReadyPayloadSchema = z.object({
+  seatKey: z.string(),
 })
-type ReadyPayload = z.infer<typeof readyPayloadSchema>
+type ReadyPayload = z.infer<typeof ReadyPayloadSchema>
 
-@Controller('/v1')
+@Controller('/v1/game')
 class GameController {
   constructor() {
     eventEmitter.on(
       `tx-confirmed-${Instruction.Play}`,
       this.#handlePlayConfirmed
     )
+    this.#subscribeSessionExpiration()
   }
 
   async #handlePlayConfirmed(accounts: PublicKey[], data: Uint8Array) {
     try {
       const owner = accounts[0].toBase58()
-      const gsKey = await r.hget(`owner:${owner}`, 'gsKey')
-      if (!gsKey) {
+      const seatKey = await r.hget(`owner:${owner}`, 'seatKey')
+      if (!seatKey) {
         return
       }
-      const gs = await r.getJSON<GameSession>(`gs:${gsKey}`)
+      const gs = await r.getJSON<GameSession>(`gs:${seatKey}`)
       if (!gs) {
         return
       }
-      
+
       const id = Buffer.from(data.slice(0, 16)).toString('hex')
       const chips = Buffer.from(data.slice(16)).readBigUint64LE()
       if (id !== gs.boardId || chips != BigInt(gs.chips)) {
@@ -68,16 +69,64 @@ class GameController {
       }
 
       gs.ready = true
-      await r.set(`gs:${gsKey}`, JSON.stringify(gs))
+      await r.set(`gs:${seatKey}`, JSON.stringify(gs))
     } catch (error) {
       log.error(error)
     }
   }
 
-  @Post('/play', auth)
-  @Payload(playPayloadSchema)
+  /**
+   * Subscribe key expiration event to remove nats consumer
+   */
+  async #subscribeSessionExpiration() {
+    await r.configSet('notify-keyspace-events', 'Ex')
+    const sub = await rSub.subscribe('__keyevent@0__:expired')
+    for await (const msg of sub.receive()) {
+      try {
+        const [_, boardId, __, consumerName] = msg.message.split(':')
+        await nats.jsm().consumers.delete(`states_${boardId}`, consumerName)
+      } catch (error) {
+        log.error(error)
+      }
+    }
+  }
+
+  @Post('/:boardId/enter')
+  async enter(ctx: Ctx) {
+    const board = await cBoards.findOne({ id: ctx.params['boardId'] })
+    if (!board) {
+      throw new Http404('Board does not exist')
+    }
+
+    // Used to identify the client
+    const consumerName = Math.random().toString(36).slice(2)
+    const sessionId = `board:${board.id}:session:${consumerName}`
+    ctx.cookies.set('sessionId', sessionId, {
+      // path: `/game/`,
+      httpOnly: false,
+    })
+    let owner: string | null = null
+    try {
+      await auth(ctx)
+      owner = ctx.profile.address
+      // deno-lint-ignore no-empty
+    } catch (_) {}
+    await r.setex(sessionId, 30, owner ?? '')
+
+    // Create consumer to consume global states
+    await nats.jsm().consumers.add(`states_${board.id}`, {
+      name: consumerName,
+      durable_name: consumerName,
+      filter_subject: `states.${board.id}`,
+      ack_policy: AckPolicy.None,
+      deliver_policy: DeliverPolicy.Last,
+    })
+  }
+
+  @Post('/:boardId/play', auth)
+  @Payload(PlayPayloadSchema)
   async play(payload: PlayPayload, ctx: Ctx) {
-    const board = await cBoards.findOne({ id: payload.boardId })
+    const board = await cBoards.findOne({ id: ctx.params['boardId'] })
     if (!board) {
       throw new Http404('Board does not exist')
     }
@@ -114,33 +163,33 @@ class GameController {
     tx.sign([dealer])
 
     // Create Game session
-    const gsKey = Math.random().toString(36).slice(2)
-    await r.setJSON(`gs:${gsKey}`, {
+    const seatKey = Math.random().toString(36).slice(2)
+    await r.setJSON(`gs:${seatKey}`, {
       boardId: board.id,
       chips: payload.chips,
       owner,
     })
-    await r.hset(`owner:${owner}`, 'gsKey', gsKey)
+    await r.hset(`owner:${owner}`, 'seatKey', seatKey)
 
     // Create game session message consumer
     await nats.jsm().consumers.add(`game`, {
-      name: gsKey,
-      durable_name: gsKey,
-      filter_subject: `gs.${gsKey}`,
+      name: seatKey,
+      durable_name: seatKey,
+      filter_subject: `gs.${seatKey}`,
       ack_policy: AckPolicy.Explicit,
     })
 
-    return { tx: encodeBase64(tx.serialize()), gsKey }
+    return { tx: encodeBase64(tx.serialize()), seatKey }
   }
 
-  @Post('/sit', auth)
-  @GS(readyPayloadSchema)
+  @Post('/:boardId/sit', auth)
+  @Seat(ReadyPayloadSchema)
   async sit(gs: GameSession, payload: ReadyPayload) {
-    const key = `board:${gs.boardId}:sessions`
+    const key = `board:${gs.boardId}:seats`
 
     await r.hset(
       key,
-      payload.gsKey,
+      payload.seatKey,
       JSON.stringify({ hands: [0, 0], chips: gs.chips })
     )
 
@@ -149,23 +198,42 @@ class GameController {
       const states = await r.hgetall(key)
       const js = nats.js()
 
+      const globalState: GlobalState = {
+        players: [],
+      }
+
       const cards = shuffle()
       for (let i = 0; i < states.length; i += 2) {
-        const gsKey = states[i]
+        const seatKey = states[i]
         const hands = [cards.shift(), cards.shift()] as [number, number]
-        const state = JSON.parse(states[i + 1]) as GameState
+        const state = JSON.parse(states[i + 1]) as PlayerState
         state.hands = hands
-        r.hset(key, gsKey, JSON.stringify(state))
+        r.hset(key, seatKey, JSON.stringify(state))
         js.publish(
-          `gs.${gsKey}`,
+          `gs.${seatKey}`,
           JSON.stringify({
             hands,
           })
         )
+        globalState.players.push({ hands: [0, 0], chips: gs.chips })
       }
+
+      // Publish global state to all
+      await nats
+        .js()
+        .publish(`states.${gs.boardId}`, JSON.stringify(globalState))
 
       await r.lpush(`board:${gs.boardId}:cards`, ...cards)
     }
+  }
+
+  @Get('/ping')
+  async ping(ctx: Ctx) {
+    const sessionId = await ctx.cookies.get('sessionId')
+    if (!sessionId) {
+      return
+    }
+    r.expire(sessionId, 30)
   }
 }
 
