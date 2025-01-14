@@ -19,6 +19,7 @@ import {
   shuffle,
   U64,
   GlobalState,
+  GameCode,
 } from 'helpers/game.ts'
 import { decodeBase58, encodeBase64 } from '@std/encoding'
 import { buildTx } from 'helpers/solana.ts'
@@ -182,7 +183,7 @@ class GameController {
     return { tx: encodeBase64(tx.serialize()), seatKey }
   }
 
-  @Post('/:boardId/sit', auth)
+  @Post('/sit', auth)
   @Seat(ReadyPayloadSchema)
   async sit(gs: GameSession, payload: ReadyPayload) {
     const key = `board:${gs.boardId}:seats`
@@ -219,9 +220,13 @@ class GameController {
       }
 
       // Publish global state to all
-      await nats
-        .js()
-        .publish(`states.${gs.boardId}`, JSON.stringify(globalState))
+      await nats.js().publish(
+        `states.${gs.boardId}`,
+        JSON.stringify({
+          code: GameCode.Sync,
+          globalState,
+        })
+      )
 
       await r.lpush(`board:${gs.boardId}:cards`, ...cards)
     }

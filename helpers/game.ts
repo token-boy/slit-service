@@ -116,11 +116,9 @@ export function shuffle(cards?: number[]) {
 
 export enum GameCode {
   Error = 0,
-  Ready = 1,
-  Join = 2,
+  Sync = 1,
 }
 
 export enum GameError {
   Unknown = 0,
-  PlayerNotFound = 1,
 }
