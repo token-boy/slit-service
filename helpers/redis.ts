@@ -4,7 +4,7 @@ import { createLazyClient } from '@db/redis'
 
 declare module '@db/redis' {
   interface RedisCommands {
-    setJSON(key: string, value: any): Promise<any>
+    setJSON<T = any>(key: string, value: T): Promise<any>
     getJSON<T = any>(key: string): Promise<T | null>
   }
 }

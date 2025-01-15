@@ -24,23 +24,48 @@ export class U64 {
   }
 }
 
-export interface GameSession {
+export interface Seat {
+  /**
+   * The owner address of the player.
+   */
   owner: string
+
+  /**
+   * The id of the board.
+   */
   boardId: string
+
+  /**
+   * The id of the player.
+   */
+  playerId: string
+
+  /**
+   * The amount of chips the player has staked.
+   */
   chips: number
-  ready: boolean
+
+  /**
+   * `unready`: Wait for the transaction of stake chips to be confirmed.
+   * `ready`: The transaction of stake chips has been confirmed.
+   * `playing`: Game is in progress.
+   * `settling`: Game is settling.
+   */
+  status: 'unready' | 'ready' | 'playing' | 'settling'
 }
 
-export interface PlayerState {
-  hands: [number, number]
+export interface SeatState {
+  playerId: string
+  hands?: [number, number]
   chips: number
+  opened: boolean
 }
 
 export interface GlobalState {
-  players: PlayerState[]
+  seats: Omit<SeatState, 'opened'>[]
 }
 
-export function Seat(Schame: z.AnyZodObject) {
+export function SeatSession(Schame: z.AnyZodObject) {
   return function (
     // deno-lint-ignore ban-types
     _target: Object,
@@ -52,15 +77,15 @@ export function Seat(Schame: z.AnyZodObject) {
       const body = ctx.payload
       const payload = Schame.parse(body)
 
-      const gs = await r.getJSON(`gs:${ctx.payload.seatKey}`)
-      if (!gs) {
+      const seat = await r.getJSON<Seat>(`seat:${ctx.payload.seatKey}`)
+      if (!seat) {
         throw new Http404('Seat key invalid')
       }
-      if (!gs.ready) {
+      if (seat.status !== 'ready') {
         throw new Http404('Seat not ready')
       }
 
-      return method.apply(this, [gs, payload, ctx])
+      return method.apply(this, [seat, payload, ctx])
     }
   }
 }

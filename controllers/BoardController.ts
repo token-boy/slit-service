@@ -17,8 +17,7 @@ import { cBoards, cKeypairs } from 'models'
 import { encodeBase58 } from '@std/encoding'
 import { z } from 'zod'
 import nats from 'helpers/nats.ts'
-import {} from '@nats-io/jetstream/internal'
-import { AckPolicy, DiscardPolicy, RetentionPolicy } from '@nats-io/jetstream'
+import { DiscardPolicy, RetentionPolicy } from '@nats-io/jetstream'
 import log from "helpers/log.ts";
 
 const CreatePayloadSchama = z.object({
@@ -46,13 +45,22 @@ class BoardController {
           },
         }
       )
-  
+      
+      // Global state stream
       nats.jsm().streams.add({
-        name: `states_${id}`,
+        name: `state_${id}`,
         subjects: ['states.*'],
         max_bytes: -1,
         retention: RetentionPolicy.Limits,
         discard: DiscardPolicy.Old,
+      })
+
+      // Seat stream
+      nats.jsm().streams.add({
+        name: `seat_${id}`,
+        subjects: ['seats.*'],
+        max_bytes: -1,
+        retention: RetentionPolicy.Workqueue,
       })
     } catch (error) {
       log.error(error)

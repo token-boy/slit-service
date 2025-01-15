@@ -3,8 +3,7 @@
     "start": "deno run --allow-net --allow-env --allow-read --allow-sys --allow-ffi main.ts",
     "dev": "deno run --allow-net --allow-env --allow-read --allow-sys --allow-ffi --env-file=.env --watch main.ts",
     "test": "deno run --allow-net --allow-env --allow-read --allow-sys --allow-ffi --env-file=.env --watch test.ts",
-    "sign-tx": "deno run --allow-env --allow-read --allow-sys --allow-ffi scripts/sign_tx.ts",
-    "init-nats": "deno run --allow-env --allow-net --env-file=.env scripts/init_nats.ts"
+    "sign-tx": "deno run --allow-env --allow-read --allow-sys --allow-ffi scripts/sign_tx.ts"
   },
   "nodeModulesDir": "auto",
   "compilerOptions": {
