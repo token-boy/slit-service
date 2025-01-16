@@ -1,6 +1,5 @@
 import { PublicKey } from '@solana/web3.js'
 import { PLAYER, PROGRAM_ID } from 'helpers/constants.ts'
-import { EventEmitter } from 'node:events'
 import { r } from 'helpers/redis.ts'
 import { Http400, Http404 } from 'helpers/http.ts'
 import { z } from 'zod'
@@ -8,8 +7,6 @@ import { connection } from 'helpers/solana.ts'
 
 export const encoder = new TextEncoder()
 export const decoder = new TextDecoder()
-
-export const eventEmitter = new EventEmitter()
 
 export function getPlayerAddress(owner: PublicKey) {
   return PublicKey.findProgramAddressSync(

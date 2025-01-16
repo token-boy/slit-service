@@ -11,14 +11,14 @@ import { Controller, Get, Payload, Post } from 'helpers/route.ts'
 import { Instruction, PROGRAM_ID, BOARD } from 'helpers/constants.ts'
 import { buildTx, connection } from 'helpers/solana.ts'
 import { Http400 } from 'helpers/http.ts'
-import { encoder, eventEmitter } from 'helpers/game.ts'
+import { encoder } from 'helpers/game.ts'
 import auth from '../middlewares/auth.ts'
 import { cBoards, cKeypairs } from 'models'
 import { encodeBase58 } from '@std/encoding'
 import { z } from 'zod'
 import nats from 'helpers/nats.ts'
 import { DiscardPolicy, RetentionPolicy } from '@nats-io/jetstream'
-import log from "helpers/log.ts";
+import { addTxEventListener } from './TxController.ts'
 
 const CreatePayloadSchama = z.object({
   minChips: z.number(),
@@ -28,43 +28,36 @@ type CreatePayload = z.infer<typeof CreatePayloadSchama>
 @Controller('/v1/boards')
 class BoardController {
   constructor() {
-    eventEmitter.on(
-      `tx-confirmed-${Instruction.Create}`,
-      this.#handleCreateConfirmed
-    )
+    addTxEventListener(Instruction.Create, this.#handleCreateConfirmed)
   }
 
-  #handleCreateConfirmed(_accounts: PublicKey[], data: Uint8Array) {
-    try {
-      const id = Buffer.from(data).toString('hex')
-      cBoards.updateOne(
-        { id },
-        {
-          $set: {
-            enabled: true,
-          },
-        }
-      )
-      
-      // Global state stream
-      nats.jsm().streams.add({
-        name: `state_${id}`,
-        subjects: ['states.*'],
-        max_bytes: -1,
-        retention: RetentionPolicy.Limits,
-        discard: DiscardPolicy.Old,
-      })
+  async #handleCreateConfirmed(_accounts: PublicKey[], data: Uint8Array) {
+    const id = Buffer.from(data).toString('hex')
+    await cBoards.updateOne(
+      { id },
+      {
+        $set: {
+          enabled: true,
+        },
+      }
+    )
 
-      // Seat stream
-      nats.jsm().streams.add({
-        name: `seat_${id}`,
-        subjects: ['seats.*'],
-        max_bytes: -1,
-        retention: RetentionPolicy.Workqueue,
-      })
-    } catch (error) {
-      log.error(error)
-    }
+    // Global state stream
+    await nats.jsm().streams.add({
+      name: `state_${id}`,
+      subjects: ['states.*'],
+      max_bytes: -1,
+      retention: RetentionPolicy.Limits,
+      discard: DiscardPolicy.Old,
+    })
+
+    // Seat stream
+    await nats.jsm().streams.add({
+      name: `seat_${id}`,
+      subjects: ['seats.*'],
+      max_bytes: -1,
+      retention: RetentionPolicy.Workqueue,
+    })
   }
 
   @Post('', auth)

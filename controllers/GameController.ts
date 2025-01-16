@@ -22,13 +22,12 @@ import {
 } from 'helpers/game.ts'
 import { decodeBase58, encodeBase64 } from '@std/encoding'
 import { buildTx } from 'helpers/solana.ts'
-import { r, rSub } from 'helpers/redis.ts'
-import { eventEmitter } from 'helpers/game.ts'
+import { r } from 'helpers/redis.ts'
 
 import auth from '../middlewares/auth.ts'
 import { AckPolicy, DeliverPolicy } from '@nats-io/jetstream'
 import nats from 'helpers/nats.ts'
-import log from 'helpers/log.ts'
+import { addTxEventListener } from './TxController.ts'
 
 const PlayPayloadSchema = z.object({
   chips: z.number().nonnegative(),
@@ -45,83 +44,53 @@ const INITIAL_HANDS: [number, number] = [0, 0]
 @Controller('/v1/game')
 class GameController {
   constructor() {
-    eventEmitter.on(
-      `tx-confirmed-${Instruction.Play}`,
-      this.#handlePlayConfirmed
-    )
-    this.#subscribeSessionExpiration()
+    addTxEventListener(Instruction.Play, this.#handlePlayConfirmed)
   }
 
   async #handlePlayConfirmed(accounts: PublicKey[], data: Uint8Array) {
-    try {
-      const owner = accounts[0].toBase58()
-      const seatKey = await r.hget(`owner:${owner}`, 'seatKey')
-      if (!seatKey) {
-        return
-      }
-      const seat = await r.getJSON<Seat>(`seat:${seatKey}`)
-      if (!seat) {
-        return
-      }
-
-      const id = Buffer.from(data.slice(0, 16)).toString('hex')
-      const chips = Buffer.from(data.slice(16)).readBigUint64LE()
-      if (id !== seat.boardId || chips != BigInt(seat.chips)) {
-        return
-      }
-
-      seat.status = 'ready'
-      await r.set(`seat:${seatKey}`, JSON.stringify(seat))
-    } catch (error) {
-      log.error(error)
+    const owner = accounts[0].toBase58()
+    const seatKey = await r.hget(`owner:${owner}`, 'seatKey')
+    if (!seatKey) {
+      return
     }
+    const seat = await r.getJSON<Seat>(`seat:${seatKey}`)
+    if (!seat) {
+      return
+    }
+
+    const id = Buffer.from(data.slice(0, 16)).toString('hex')
+    const chips = Buffer.from(data.slice(16)).readBigUint64LE()
+    if (id !== seat.boardId || chips != BigInt(seat.chips)) {
+      return
+    }
+
+    seat.status = 'ready'
+    await r.set(`seat:${seatKey}`, JSON.stringify(seat))
   }
 
-  /**
-   * Subscribe key expiration event to remove nats consumer
-   */
-  async #subscribeSessionExpiration() {
-    await r.configSet('notify-keyspace-events', 'Ex')
-    const sub = await rSub.subscribe('__keyevent@0__:expired')
-    for await (const msg of sub.receive()) {
-      try {
-        const [_, boardId, __, consumerName] = msg.message.split(':')
-        await nats.jsm().consumers.delete(`state_${boardId}`, consumerName)
-      } catch (error) {
-        log.error(error)
-      }
-    }
-  }
-
-  @Post('/:boardId/enter')
+  @Get('/:boardId/enter')
   async enter(ctx: Ctx) {
     const board = await cBoards.findOne({ id: ctx.params['boardId'] })
     if (!board) {
       throw new Http404('Board does not exist')
     }
 
-    // Used to identify the client
-    const consumerName = Math.random().toString(36).slice(2)
-    const sessionId = `board:${board.id}:session:${consumerName}`
-    ctx.cookies.set('sessionId', sessionId, {
-      // path: `/game/`,
-      httpOnly: false,
-    })
     let owner: string | null = null
     try {
       await auth(ctx)
       owner = ctx.profile.address
       // deno-lint-ignore no-empty
     } catch (_) {}
-    await r.setex(sessionId, 30, owner ?? '')
 
     // Create consumer to consume global states
+    const consumerName = Math.random().toString(36).slice(2)
     await nats.jsm().consumers.add(`state_${board.id}`, {
       name: consumerName,
       durable_name: consumerName,
       filter_subject: `states.${board.id}`,
       ack_policy: AckPolicy.None,
       deliver_policy: DeliverPolicy.Last,
+      inactive_threshold: 1000000000 * 60 * 10,  // nanosecond
     })
 
     const seatKey = await r.hget(`owner:${owner}`, 'seatKey')
@@ -195,7 +164,11 @@ class GameController {
       ack_policy: AckPolicy.Explicit,
     })
 
-    return { tx: encodeBase64(tx.serialize()), seatKey }
+    return {
+      tx: encodeBase64(tx.serialize()),
+      seatKey,
+      playerId: player._id.toString(),
+    }
   }
 
   /**
@@ -268,15 +241,6 @@ class GameController {
     }
 
     this.#sync(seat.boardId)
-  }
-
-  @Get('/ping')
-  async ping(ctx: Ctx) {
-    const sessionId = await ctx.cookies.get('sessionId')
-    if (!sessionId) {
-      return
-    }
-    r.expire(sessionId, 30)
   }
 }
 

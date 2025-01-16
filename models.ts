@@ -7,6 +7,8 @@ export interface Player {
   owner: string
   address: string
   chips: number
+  avatarUrl: string
+  nickname: string
 }
 
 export const cPlayers = db.collection<Player>('players')

@@ -1,6 +1,8 @@
 // import nats from 'helpers/nats.ts'
 // import { AckPolicy, DeliverPolicy, RetentionPolicy } from '@nats-io/jetstream'
 
+import { r, rSub } from 'helpers/redis.ts'
+
 // await nats.connect()
 // const jsm = nats.jsm()
 // const js = nats.js()
