@@ -42,10 +42,10 @@ class BoardController {
       }
     )
 
-    // Global state stream
+    // Global state stream    
     await nats.jsm().streams.add({
       name: `state_${id}`,
-      subjects: ['states.*'],
+      subjects: [`states.${id}`],
       max_bytes: -1,
       retention: RetentionPolicy.Limits,
       discard: DiscardPolicy.Old,
@@ -54,7 +54,7 @@ class BoardController {
     // Seat stream
     await nats.jsm().streams.add({
       name: `seat_${id}`,
-      subjects: ['seats.*'],
+      subjects: [`seats.${id}.*`],
       max_bytes: -1,
       retention: RetentionPolicy.Workqueue,
     })
@@ -118,6 +118,7 @@ class BoardController {
     return cBoards
       .find({ enabled: true })
       .project({ id: 1, address: 1, chips: 1, minChips: 1 })
+      .sort({ _id: -1 })
       .toArray()
   }
 }

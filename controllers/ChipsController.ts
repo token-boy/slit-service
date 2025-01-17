@@ -29,7 +29,7 @@ import { getPlayerAddress, U64 } from 'helpers/game.ts'
 import auth from '../middlewares/auth.ts'
 
 const SwapPayloadSchema = z.object({
-  amount: z.string(),
+  amount: z.bigint({ coerce: true }).gt(0n),
 })
 type SwapPayload = z.infer<typeof SwapPayloadSchema>
 
@@ -37,11 +37,7 @@ type SwapPayload = z.infer<typeof SwapPayloadSchema>
 class ChipsController {
   constructor() {}
 
-  private async swap(address: string, side: SwapSide, amount: string) {
-    if (isNaN(parseInt(amount))) {
-      throw new Http400('Invalid amount')
-    }
-
+  private async swap(address: string, side: SwapSide, amount: bigint) {
     const player = new PublicKey(address)
     const playerAddress = getPlayerAddress(player)
 
@@ -52,10 +48,10 @@ class ChipsController {
 
     if (side === SwapSide.Deposit) {
       const balance = await connection.getBalance(player)
-      if (balance < parseInt(amount) / CHIPS_RATE) {
+      if (balance < amount / BigInt(CHIPS_RATE)) {
         throw new Http400('Balance not enough')
       }
-    } else if (accountInfo.data.readBigUInt64LE(8) < parseInt(amount)) {
+    } else if (accountInfo.data.readBigUInt64LE(8) < amount) {
       throw new Http400('Chips not enough')
     }
 
@@ -68,16 +64,12 @@ class ChipsController {
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       ],
       programId: PROGRAM_ID,
-      data: Buffer.from([
-        Instruction.Swap,
-        side,
-        ...U64.toUint8Array(amount),
-      ]),
+      data: Buffer.from([Instruction.Swap, side, ...U64.toUint8Array(amount)]),
     })
     const tx = await buildTx(player, [ix])
 
     return {
-      tx: encodeBase64(tx.serialize())
+      tx: encodeBase64(tx.serialize()),
     }
   }
 

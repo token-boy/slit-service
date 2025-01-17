@@ -6,6 +6,7 @@ import { r, rSub } from 'helpers/redis.ts'
 import log from 'helpers/log.ts'
 import nats from 'helpers/nats.ts'
 import { mClient } from "models";
+import 'helpers/bigint.ts'
 
 const app = new Application()
 const router = new Router()

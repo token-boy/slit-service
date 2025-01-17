@@ -16,8 +16,8 @@ export function getPlayerAddress(owner: PublicKey) {
 }
 
 export class U64 {
-  static toUint8Array(value: number | string) {
-    return new Uint8Array(new BigUint64Array([BigInt(value)]).buffer)
+  static toUint8Array(value: bigint) {
+    return new Uint8Array(new BigUint64Array([value]).buffer)
   }
 }
 
@@ -40,7 +40,7 @@ export interface Seat {
   /**
    * The amount of chips the player has staked.
    */
-  chips: number
+  chips: string
 
   /**
    * `unready`: Wait for the transaction of stake chips to be confirmed.
@@ -54,12 +54,20 @@ export interface Seat {
 export interface SeatState {
   playerId: string
   hands?: [number, number]
-  chips: number
-  opened: boolean
+  chips: string
 }
 
-export interface GlobalState {
+export interface GameState {
   seats: Omit<SeatState, 'opened'>[]
+  deckCount: number
+  turn: string
+  turnExpireAt: number
+  pot: string
+}
+
+export interface CursorState {
+  expireAt: number
+  seatKey: string
 }
 
 export function SeatSession(Schame: z.AnyZodObject) {
@@ -139,6 +147,8 @@ export function shuffle(cards?: number[]) {
 export enum GameCode {
   Error = 0,
   Sync = 1,
+  Turn = 2,
+  Open = 3,
 }
 
 export enum GameError {

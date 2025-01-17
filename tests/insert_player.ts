@@ -24,7 +24,7 @@ for (let i = 0; i < 10; i++) {
       'states.e3aebea69f41453881a34c1f3227c718',
       JSON.stringify({
         code: GameCode.Sync,
-        globalState: { seats },
+        gameState: { seats },
       })
     )
 

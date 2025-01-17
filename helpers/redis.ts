@@ -6,6 +6,8 @@ declare module '@db/redis' {
   interface RedisCommands {
     setJSON<T = any>(key: string, value: T): Promise<any>
     getJSON<T = any>(key: string): Promise<T | null>
+    hsetJSON<T = any>(key: string, field: string, value: T): Promise<any>
+    hgetJSON<T = any>(key: string, field: string): Promise<T | null>
   }
 }
 
@@ -26,4 +28,12 @@ r.setJSON = (key: string, value: any) => {
 
 r.getJSON = async <T = any>(key: string) => {
   return JSON.parse((await r.get(key)) as string) as T
+}
+
+r.hsetJSON = (key: string, field: string, value: any) => {
+  return r.hset(key, field, JSON.stringify(value))
+}
+
+r.hgetJSON = async <T = any>(key: string, field: string) => {
+  return JSON.parse((await r.hget(key, field)) as string) as T
 }
