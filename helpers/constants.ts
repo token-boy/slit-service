@@ -8,8 +8,6 @@ export const PROGRAM_ID = new PublicKey(
   '79uMyLzwnjDgjTX1aMTxShygBaCkzWV5enXt3HD22vK'
 )
 
-export const ONE_DAY = 1000 * 3600 * 24
-export const ONE_HOUR = 1000 * 3600
 export const ONE_MINUTE = 1000 * 60
 
 export enum Instruction {

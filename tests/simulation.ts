@@ -1,4 +1,4 @@
-import { encoder } from 'helpers/game.ts'
+import { TE } from 'helpers/game.ts'
 import { Keypair, VersionedTransaction } from '@solana/web3.js'
 import { connection, sleep } from 'helpers/solana.ts'
 import nacl from 'tweetnacl'
@@ -17,7 +17,7 @@ interface Player {
 }
 const players: Player[] = []
 
-const boardId = 'e3aebea69f41453881a34c1f3227c718'
+const boardId = Deno.args[0]
 const nicknames = [
   'John',
   'Michael',
@@ -97,7 +97,7 @@ async function updateProfile(player: Player) {
 async function signIn(player: Player) {
   const timestamp = Date.now().toString()
   const signature = nacl.sign.detached(
-    encoder.encode(timestamp),
+    TE.encode(timestamp),
     player.signer.secretKey
   )
   const { accessToken, isNew } = await request(`v1/sessions`, {
@@ -179,14 +179,14 @@ async function insertPlayer(index: number) {
   await sit(player)
 }
 
-function test() {
-  Array.from({ length: 9 }).forEach(async (_, i) => {
+function join(num: number, offset = 0) {
+  Array.from({ length: num }).forEach(async (_, i) => {
     try {
-      await insertPlayer(i)
+      await insertPlayer(offset+i)
     } catch (error) {
       console.error(error)
     }
   })
 }
 
-test()
+join(7, 2)

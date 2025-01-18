@@ -6,7 +6,7 @@ import { decodeBase64 } from '@std/encoding'
 import { Controller, Payload, Post } from 'helpers/route.ts'
 import { ONE_MINUTE } from 'helpers/constants.ts'
 import { Http400 } from 'helpers/http.ts'
-import { encoder } from 'helpers/game.ts'
+import { TE } from 'helpers/game.ts'
 
 import { createAccessToken } from '../middlewares/auth.ts'
 import { cPlayers } from 'models'
@@ -35,7 +35,7 @@ class SessionController {
     }
 
     const result = nacl.sign.detached.verify(
-      encoder.encode(payload.timestamp),
+      TE.encode(payload.timestamp),
       Uint8Array.from(decodeBase64(payload.signature)),
       new PublicKey(payload.address).toBytes()
     )

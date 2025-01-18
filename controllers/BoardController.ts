@@ -11,7 +11,7 @@ import { Controller, Get, Payload, Post } from 'helpers/route.ts'
 import { Instruction, PROGRAM_ID, BOARD } from 'helpers/constants.ts'
 import { buildTx, connection } from 'helpers/solana.ts'
 import { Http400 } from 'helpers/http.ts'
-import { encoder } from 'helpers/game.ts'
+import { publishGameState, TE } from 'helpers/game.ts'
 import auth from '../middlewares/auth.ts'
 import { cBoards, cKeypairs } from 'models'
 import { encodeBase58 } from '@std/encoding'
@@ -19,6 +19,7 @@ import { z } from 'zod'
 import nats from 'helpers/nats.ts'
 import { DiscardPolicy, RetentionPolicy } from '@nats-io/jetstream'
 import { addTxEventListener } from './TxController.ts'
+import { r } from 'helpers/redis.ts'
 
 const CreatePayloadSchama = z.object({
   minChips: z.number(),
@@ -33,6 +34,8 @@ class BoardController {
 
   async #handleCreateConfirmed(_accounts: PublicKey[], data: Uint8Array) {
     const id = Buffer.from(data).toString('hex')
+
+    // Enable board
     await cBoards.updateOne(
       { id },
       {
@@ -42,7 +45,12 @@ class BoardController {
       }
     )
 
-    // Global state stream    
+    // Initialize redis state
+    await r.lpush(`board:${id}:cards`, ...Array(52).fill(0))
+    await r.set(`board:${id}:pot`, '0')
+    await r.set(`board:${id}:roundCount`, '0')
+
+    // Global state stream
     await nats.jsm().streams.add({
       name: `state_${id}`,
       subjects: [`states.${id}`],
@@ -58,6 +66,13 @@ class BoardController {
       max_bytes: -1,
       retention: RetentionPolicy.Workqueue,
     })
+
+    // Publish initial state
+    await publishGameState(id, {
+      seats: [],
+      deckCount: 52,
+      pot: '0',
+    })
   }
 
   @Post('', auth)
@@ -68,7 +83,7 @@ class BoardController {
     const uuid = crypto.randomUUID().replace(/-/g, '')
     const boardId = Uint8Array.from(Buffer.from(uuid, 'hex'))
     const boardAddress = PublicKey.findProgramAddressSync(
-      [encoder.encode(BOARD), boardId],
+      [TE.encode(BOARD), boardId],
       PROGRAM_ID
     )[0]
 

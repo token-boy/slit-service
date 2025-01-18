@@ -4,22 +4,10 @@ import { r } from 'helpers/redis.ts'
 import { Http400, Http404 } from 'helpers/http.ts'
 import { z } from 'zod'
 import { connection } from 'helpers/solana.ts'
+import nats from 'helpers/nats.ts'
 
-export const encoder = new TextEncoder()
-export const decoder = new TextDecoder()
-
-export function getPlayerAddress(owner: PublicKey) {
-  return PublicKey.findProgramAddressSync(
-    [encoder.encode(PLAYER), owner.toBytes()],
-    PROGRAM_ID
-  )[0]
-}
-
-export class U64 {
-  static toUint8Array(value: bigint) {
-    return new Uint8Array(new BigUint64Array([value]).buffer)
-  }
-}
+export const TE = new TextEncoder()
+export const TD = new TextDecoder()
 
 export interface Seat {
   /**
@@ -51,6 +39,13 @@ export interface Seat {
   status: 'unready' | 'ready' | 'playing' | 'settling'
 }
 
+export enum GameCode {
+  Error = 0,
+  Sync = 1,
+  Turn = 2,
+  Open = 3,
+}
+
 export interface SeatState {
   playerId: string
   hands?: [number, number]
@@ -60,14 +55,27 @@ export interface SeatState {
 export interface GameState {
   seats: Omit<SeatState, 'opened'>[]
   deckCount: number
-  turn: string
-  turnExpireAt: number
+  turn?: string
+  turnExpireAt?: number
   pot: string
 }
 
 export interface CursorState {
   expireAt: number
   seatKey: string
+}
+
+export class U64 {
+  static toUint8Array(value: bigint) {
+    return new Uint8Array(new BigUint64Array([value]).buffer)
+  }
+}
+
+export function getPlayerAddress(owner: PublicKey) {
+  return PublicKey.findProgramAddressSync(
+    [TE.encode(PLAYER), owner.toBytes()],
+    PROGRAM_ID
+  )[0]
 }
 
 export function SeatSession(Schame: z.AnyZodObject) {
@@ -144,13 +152,12 @@ export function shuffle(cards?: number[]) {
   return cards
 }
 
-export enum GameCode {
-  Error = 0,
-  Sync = 1,
-  Turn = 2,
-  Open = 3,
-}
-
-export enum GameError {
-  Unknown = 0,
+export function publishGameState(boardId: string, state: GameState) {
+  return nats.js().publish(
+    `states.${boardId}`,
+    JSON.stringify({
+      code: GameCode.Sync,
+      ...state,
+    })
+  )
 }

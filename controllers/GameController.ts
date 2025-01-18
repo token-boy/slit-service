@@ -22,6 +22,7 @@ import {
   type GameState,
   GameCode,
   CursorState,
+  publishGameState,
 } from 'helpers/game.ts'
 import { decodeBase58, encodeBase64 } from '@std/encoding'
 import { buildTx } from 'helpers/solana.ts'
@@ -193,17 +194,20 @@ class GameController {
     pl.get(`board:${boardId}:pot`)
     const [seatStates, deckCount, cursor, pot] = await pl.flush()
 
-    const cursorState = JSON.parse(cursor as string) as CursorState
-    const seatState = (await r.hgetJSON(
-      `board:${boardId}:seats`,
-      cursorState.seatKey
-    )) as SeatState
     const gameState: GameState = {
       seats: [],
       deckCount: deckCount as number,
-      turn: seatState.playerId,
-      turnExpireAt: cursorState.expireAt,
       pot: pot as string,
+    }
+
+    if (cursor) {
+      const cursorState = JSON.parse(cursor as string) as CursorState
+      const seatState = await r.hgetJSON<SeatState>(
+        `board:${boardId}:seats`,
+        cursorState.seatKey
+      )
+      gameState.turn = seatState!.playerId
+      gameState.turnExpireAt = cursorState.expireAt
     }
 
     const states = seatStates as string[]
@@ -216,13 +220,7 @@ class GameController {
       })
     }
 
-    await nats.js().publish(
-      `states.${boardId}`,
-      JSON.stringify({
-        code: GameCode.Sync,
-        gameState,
-      })
-    )
+    await publishGameState(boardId, gameState)
   }
 
   /**
@@ -295,9 +293,9 @@ class GameController {
     }
   }
 
-  @Post('/turn')
+  @Post('/bet')
   @SeatSession(TurnPayloadSchema)
-  async turn(seat: Seat, payload: TurnPayload) {
+  async bet(seat: Seat, payload: TurnPayload) {
     const { seatKey, bet } = payload
     const { boardId, playerId } = seat
 
@@ -338,6 +336,7 @@ class GameController {
         code: GameCode.Turn,
         playerId,
         bet,
+        hands: bet > 0n ? state.hands : INITIAL_HANDS,
       })
     )
 
