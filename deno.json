@@ -14,7 +14,6 @@
     "strictPropertyInitialization": false
   },
   "imports": {
-    "@db/redis": "jsr:@db/redis@^0.37.1",
     "@nats-io/jetstream": "jsr:@nats-io/jetstream@^3.0.0-35",
     "@nats-io/transport-deno": "jsr:@nats-io/transport-deno@^3.0.0-20",
     "@oak/oak": "jsr:@oak/oak@^14.2.0",
@@ -23,6 +22,7 @@
     "@std/uuid": "jsr:@std/uuid@^1.0.4",
     "@zaubrik/djwt": "jsr:@zaubrik/djwt@^3.0.2",
     "@solana/web3.js": "npm:@solana/web3.js@^1.98.0",
+    "ioredis": "npm:ioredis@^5.4.2",
     "tweetnacl": "npm:tweetnacl@^1.0.3",
     "zod": "npm:zod@^3.24.1",
     "mongodb": "npm:mongodb@^6.12.0",

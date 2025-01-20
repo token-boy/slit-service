@@ -1,7 +1,6 @@
 {
   "version": "4",
   "specifiers": {
-    "jsr:@db/redis@~0.37.1": "0.37.1",
     "jsr:@nats-io/jetstream@^3.0.0-35": "3.0.0-35",
     "jsr:@nats-io/nats-core@^3.0.0-48": "3.0.0-48",
     "jsr:@nats-io/nats-core@~3.0.0-48": "3.0.0-48",
@@ -15,14 +14,12 @@
     "jsr:@std/assert@1": "1.0.10",
     "jsr:@std/assert@^1.0.10": "1.0.10",
     "jsr:@std/assert@~0.218.2": "0.218.2",
-    "jsr:@std/async@1": "1.0.9",
     "jsr:@std/bytes@0.218": "0.218.2",
     "jsr:@std/bytes@1": "1.0.4",
     "jsr:@std/bytes@^1.0.2": "1.0.4",
     "jsr:@std/bytes@^1.0.2-rc.3": "1.0.4",
     "jsr:@std/bytes@~0.218.2": "0.218.2",
     "jsr:@std/cli@^1.0.8": "1.0.9",
-    "jsr:@std/collections@1": "1.0.9",
     "jsr:@std/crypto@0.218": "0.218.2",
     "jsr:@std/crypto@1": "1.0.3",
     "jsr:@std/crypto@^1.0.3": "1.0.3",
@@ -41,7 +38,6 @@
     "jsr:@std/internal@^1.0.5": "1.0.5",
     "jsr:@std/io@0.218": "0.218.2",
     "jsr:@std/io@0.224": "0.224.9",
-    "jsr:@std/io@0.224.5": "0.224.5",
     "jsr:@std/io@0.225": "0.225.0",
     "jsr:@std/io@0.225.0": "0.225.0",
     "jsr:@std/log@~0.224.12": "0.224.12",
@@ -52,13 +48,13 @@
     "jsr:@std/path@0.218": "0.218.2",
     "jsr:@std/path@1": "1.0.8",
     "jsr:@std/path@^1.0.8": "1.0.8",
-    "jsr:@std/random@0.1.0": "0.1.0",
     "jsr:@std/streams@^1.0.8": "1.0.8",
     "jsr:@std/uuid@^1.0.4": "1.0.4",
     "jsr:@zaubrik/djwt@^3.0.2": "3.0.2",
     "npm:@solana/web3.js@^1.98.0": "1.98.0",
     "npm:@types/node@*": "22.5.4",
     "npm:cluster-key-slot@1.1.0": "1.1.0",
+    "npm:ioredis@^5.4.2": "5.4.2",
     "npm:mongodb@^6.12.0": "6.12.0",
     "npm:path-to-regexp@6.2.1": "6.2.1",
     "npm:tweetnacl@1.0.3": "1.0.3",
@@ -66,17 +62,6 @@
     "npm:zod@^3.24.1": "3.24.1"
   },
   "jsr": {
-    "@db/redis@0.37.1": {
-      "integrity": "46ca414091c47b64ddccbac621754713b6261599f559584b8498ee871acff348",
-      "dependencies": [
-        "jsr:@std/async",
-        "jsr:@std/bytes@1",
-        "jsr:@std/collections",
-        "jsr:@std/io@0.224.5",
-        "jsr:@std/random",
-        "npm:cluster-key-slot"
-      ]
-    },
     "@nats-io/jetstream@3.0.0-35": {
       "integrity": "7c9e2355b4ad5a5d2c2ef9bf732e4674b6e7b63948ecc6942ef864f42740296d",
       "dependencies": [
@@ -148,9 +133,6 @@
         "jsr:@std/internal"
       ]
     },
-    "@std/async@1.0.9": {
-      "integrity": "c6472fd0623b3f3daae023cdf7ca5535e1b721dfbf376562c0c12b3fb4867f91"
-    },
     "@std/bytes@0.218.2": {
       "integrity": "91fe54b232dcca73856b79a817247f4a651dbb60d51baafafb6408c137241670"
     },
@@ -159,9 +141,6 @@
     },
     "@std/cli@1.0.9": {
       "integrity": "557e5865af000efbf3f737dcfea5b8ab86453594f4a9cd8d08c9fa83d8e3f3bc"
-    },
-    "@std/collections@1.0.9": {
-      "integrity": "4f58104ead08a04a2199374247f07befe50ba01d9cca8cbb23ab9a0419921e71"
     },
     "@std/crypto@0.218.2": {
       "integrity": "8c5031a3a1c3ac3bed3c0d4bed2fe7e7faedcb673bbfa0edd10570c8452f5cd2",
@@ -220,12 +199,6 @@
         "jsr:@std/bytes@~0.218.2"
       ]
     },
-    "@std/io@0.224.5": {
-      "integrity": "cb84fe655d1273fca94efcff411465027a8b0b4225203f19d6ee98d9c8920a2d",
-      "dependencies": [
-        "jsr:@std/bytes@^1.0.2-rc.3"
-      ]
-    },
     "@std/io@0.224.9": {
       "integrity": "4414664b6926f665102e73c969cfda06d2c4c59bd5d0c603fd4f1b1c840d6ee3",
       "dependencies": [
@@ -264,9 +237,6 @@
     "@std/path@1.0.8": {
       "integrity": "548fa456bb6a04d3c1a1e7477986b6cffbce95102d0bb447c67c4ee70e0364be"
     },
-    "@std/random@0.1.0": {
-      "integrity": "70a006be0ffb77d036bab54aa8ae6bd0119ba77ace0f2f56f63273d4262a5667"
-    },
     "@std/streams@1.0.8": {
       "integrity": "b41332d93d2cf6a82fe4ac2153b930adf1a859392931e2a19d9fabfb6f154fb3"
     },
@@ -290,6 +260,9 @@
       "dependencies": [
         "regenerator-runtime"
       ]
+    },
+    "@ioredis/commands@1.2.0": {
+      "integrity": "sha512-Sx1pU8EM64o2BrqNpEO1CNLtKQwyhuXuqyfH7oGKCk+1a33d2r5saW8zNwm3j6BTExtjrv2BxTgzzkMwts6vGg=="
     },
     "@mongodb-js/saslprep@1.1.9": {
       "integrity": "sha512-tVkljjeEaAhCqTzajSdgbQ6gE6f3oneVwa3iXR6csiEwXXOFsiC6Uh9iAjAhXPtqa/XMDHWjjeNH/77m/Yq2dw==",
@@ -453,8 +426,17 @@
     "commander@2.20.3": {
       "integrity": "sha512-GpVkmM8vF2vQUkj2LvZmD35JxeJOLCwJ9cUkugyk2nuhbv3+mJvpLYYt+0+USMxE+oj+ey/lJEnhZw75x/OMcQ=="
     },
+    "debug@4.4.0": {
+      "integrity": "sha512-6WTZ/IxCY/T6BALoZHaE4ctp9xm+Z5kY/pzYaCHRFeyVhojxlrm+46y68HA6hr0TcwEssoxNiDEUJQjfPZ/RYA==",
+      "dependencies": [
+        "ms"
+      ]
+    },
     "delay@5.0.0": {
       "integrity": "sha512-ReEBKkIfe4ya47wlPYf/gu5ib6yUG0/Aez0JQZQz94kiWtRQvZIQbTiehsnwHvLSWJnQdhVeqYue7Id1dKr0qw=="
+    },
+    "denque@2.1.0": {
+      "integrity": "sha512-HVQE3AAb/pxF8fQAoiqpvg9i3evqug3hoiwakOyZAwJm+6vZehbkYXZ0l4JxS+I3QxM97v5aaRNhj8v5oBhekw=="
     },
     "es6-promise@4.2.8": {
       "integrity": "sha512-HJDGx5daxeIvxdBxvG2cb9g4tEvwIk3i8+nhX0yGrYmZUzbkdg8QbDevheDB8gd0//uPj4c1EQua8Q+MViT0/w=="
@@ -486,6 +468,20 @@
     "ieee754@1.2.1": {
       "integrity": "sha512-dcyqhDvX1C46lXZcVqCpK+FtMRQVdIMN6/Df5js2zouUsqG7I6sFxitIC+7KYK29KdXOLHdu9zL4sFnoVQnqaA=="
     },
+    "ioredis@5.4.2": {
+      "integrity": "sha512-0SZXGNGZ+WzISQ67QDyZ2x0+wVxjjUndtD8oSeik/4ajifeiRufed8fCb8QW8VMyi4MXcS+UO1k/0NGhvq1PAg==",
+      "dependencies": [
+        "@ioredis/commands",
+        "cluster-key-slot",
+        "debug",
+        "denque",
+        "lodash.defaults",
+        "lodash.isarguments",
+        "redis-errors",
+        "redis-parser",
+        "standard-as-callback"
+      ]
+    },
     "isomorphic-ws@4.0.1_ws@7.5.10": {
       "integrity": "sha512-BhBvN2MBpWTaSHdWRb/bwdZJ1WaehQ2L1KngkCkfLUGF0mAWAT1sQUQacEmQ0jXkFw/czDXPNQSL5u2/Krsz1w==",
       "dependencies": [
@@ -514,6 +510,12 @@
     },
     "jsonparse@1.3.1": {
       "integrity": "sha512-POQXvpdL69+CluYsillJ7SUhKvytYjW9vG/GKpnf+xP8UWgYEM/RaMzHHofbALDiKbbP1W8UEYmgGl39WkPZsg=="
+    },
+    "lodash.defaults@4.2.0": {
+      "integrity": "sha512-qjxPLHd3r5DnsdGacqOMU6pb/avJzdh9tFX2ymgoZE27BmjXrNy/y4LoaiTeAb+O3gL8AfpJGtqfX/ae2leYYQ=="
+    },
+    "lodash.isarguments@3.1.0": {
+      "integrity": "sha512-chi4NHZlZqZD18a0imDHnZPrDeBbTtVN7GXMwuGdRH9qotxAjYs3aVLKc7zNOG9eddR5Ksd8rvFEBc9SsggPpg=="
     },
     "memory-pager@1.5.0": {
       "integrity": "sha512-ZS4Bp4r/Zoeq6+NLJpP+0Zzm0pR8whtGPf1XExKLJBAczGMnSi3It14OiNCStjQjM6NU1okjQGSxgEZN8eBYKg=="
@@ -551,6 +553,15 @@
     "punycode@2.3.1": {
       "integrity": "sha512-vYt7UD1U9Wg6138shLtLOvdAu+8DsC/ilFtEVHcH+wydcSpNE20AfSOduf6MkRFahL5FY7X1oU7nKVZFtfq8Fg=="
     },
+    "redis-errors@1.2.0": {
+      "integrity": "sha512-1qny3OExCf0UvUV/5wpYKf2YwPcOqXzkwKKSmKHiE6ZMQs5heeE/c8eXK+PNllPvmjgAbfnsbpkGZWy8cBpn9w=="
+    },
+    "redis-parser@3.0.0": {
+      "integrity": "sha512-DJnGAeenTdpMEH6uAJRK/uiyEIH9WVsUmoLwzudwGJUwZPp80PDBWPHXSAGNPwNvIXAbe7MSUB1zQFugFml66A==",
+      "dependencies": [
+        "redis-errors"
+      ]
+    },
     "regenerator-runtime@0.14.1": {
       "integrity": "sha512-dYnhHh0nJoMfnkZs6GmmhFknAGRrLznOu5nc9ML+EJxGvrx6H7teuevqVqCuPcPK//3eDrrjQhehXVx9cnkGdw=="
     },
@@ -576,6 +587,9 @@
       "dependencies": [
         "memory-pager"
       ]
+    },
+    "standard-as-callback@2.1.0": {
+      "integrity": "sha512-qoRRSyROncaz1z0mvYqIE4lCd9p2R90i6GxW3uZv5ucSu8tU7B5HXUP1gG8pVZsYNVaXjk8ClXHPttLyxAL48A=="
     },
     "superstruct@2.0.2": {
       "integrity": "sha512-uV+TFRZdXsqXTL2pRvujROjdZQ4RAlBUS5BTh9IGm+jTqQntYThciG/qu57Gs69yjnVUSqdxF9YLmSnpupBW9A=="
@@ -683,7 +697,6 @@
   },
   "workspace": {
     "dependencies": [
-      "jsr:@db/redis@~0.37.1",
       "jsr:@nats-io/jetstream@^3.0.0-35",
       "jsr:@nats-io/transport-deno@^3.0.0-20",
       "jsr:@oak/oak@^14.2.0",
@@ -692,6 +705,7 @@
       "jsr:@std/uuid@^1.0.4",
       "jsr:@zaubrik/djwt@^3.0.2",
       "npm:@solana/web3.js@^1.98.0",
+      "npm:ioredis@^5.4.2",
       "npm:mongodb@^6.12.0",
       "npm:tweetnacl@^1.0.3",
       "npm:zod@^3.24.1"

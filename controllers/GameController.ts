@@ -21,15 +21,16 @@ import {
   U64,
   type GameState,
   GameCode,
-  CursorState,
+  Cursor,
   publishGameState,
 } from 'helpers/game.ts'
 import { decodeBase58, encodeBase64 } from '@std/encoding'
-import { buildTx } from 'helpers/solana.ts'
-import { r } from 'helpers/redis.ts'
+import { buildTx, sleep } from 'helpers/solana.ts'
+import { r, rSub } from 'helpers/redis.ts'
 import { auth } from 'middlewares'
 
 import { addTxEventListener } from './TxController.ts'
+import log from 'helpers/log.ts'
 
 const PlayPayloadSchema = z.object({
   chips: z.bigint({ coerce: true }).gt(0n),
@@ -41,19 +42,20 @@ const ReadyPayloadSchema = z.object({
 })
 type ReadyPayload = z.infer<typeof ReadyPayloadSchema>
 
-const TurnPayloadSchema = z.object({
+const BetPayloadSchema = z.object({
   seatKey: z.string(),
   bet: z.bigint({ coerce: true }).nonnegative(),
 })
-type TurnPayload = z.infer<typeof TurnPayloadSchema>
+type BetPayload = z.infer<typeof BetPayloadSchema>
 
 const INITIAL_HANDS: [number, number] = [0, 0]
-const COUNTDOWN = 10 * 1000
+const COUNTDOWN = 30
 
 @Controller('/v1/game')
 class GameController {
   constructor() {
     addTxEventListener(Instruction.Play, this.#handlePlayConfirmed)
+    this.#handleTimerExpired()
   }
 
   async #handlePlayConfirmed(accounts: PublicKey[], data: Uint8Array) {
@@ -76,6 +78,35 @@ class GameController {
 
     seat.status = 'ready'
     await r.setJSON(`seat:${seatKey}`, seat)
+  }
+
+  async #handleTimerExpired() {
+    await rSub.subscribe('__keyevent@0__:expired')
+    rSub.on('message', async (_channel, message) => {
+      try {
+        const [_, boardId, timer] = message.split(':')
+        if (timer !== 'timer') {
+          return
+        }
+        const cursor = await r.getJSON<Cursor>(`board:${boardId}:cursor`)
+        if (!cursor) {
+          const len = await r.hlen(`board:${boardId}:seats`)
+          if (len >= 2) {
+            this.#deal(boardId)
+          } else {
+            await r.setex(`board:${boardId}:timer`, COUNTDOWN, '0')
+          }
+          return
+        }
+        const seat = await r.getJSON<Seat>(`seat:${cursor.seatKey}`)
+        if (!seat) {
+          return
+        }
+        this.#turn(cursor.seatKey, seat, 0n)
+      } catch (error) {
+        log.error(error)
+      }
+    })
   }
 
   @Get('/:boardId/enter')
@@ -122,12 +153,13 @@ class GameController {
     if (!board) {
       throw new Http404('Board does not exist')
     }
+    const boardId = board.id
     const player = await cPlayers.findOne({ owner })
     if (!player) {
       throw new Http404('Player does not exist')
     }
 
-    if ((await r.hlen(`board:${board.id}:players`)) > MAX_PLAYERS) {
+    if ((await r.hlen(`board:${boardId}:players`)) > MAX_PLAYERS) {
       throw new Http400('Board is full')
     }
 
@@ -148,7 +180,7 @@ class GameController {
       ],
       data: Buffer.from([
         Instruction.Play,
-        ...Buffer.from(board.id, 'hex'),
+        ...Buffer.from(boardId, 'hex'),
         ...U64.toUint8Array(payload.chips),
       ]),
     })
@@ -159,19 +191,19 @@ class GameController {
     // Create seat session
     const seatKey = Math.random().toString(36).slice(2)
     await r.setJSON<Seat>(`seat:${seatKey}`, {
-      boardId: board.id,
+      boardId,
       chips: payload.chips.toString(),
       playerId: player._id.toString(),
       owner,
       status: 'unready',
     })
-    await r.hset(`owner:${owner}`, board.id, seatKey)
+    await r.hset(`owner:${owner}`, boardId, seatKey)
 
     // Create seat message consumer
-    await nats.jsm().consumers.add(`seat_${board.id}`, {
+    await nats.jsm().consumers.add(`seat_${boardId}`, {
       name: seatKey,
       durable_name: seatKey,
-      filter_subject: `seats.${seatKey}`,
+      filter_subject: `seats.${boardId}.${seatKey}`,
       ack_policy: AckPolicy.Explicit,
     })
 
@@ -201,7 +233,7 @@ class GameController {
     }
 
     if (cursor) {
-      const cursorState = JSON.parse(cursor as string) as CursorState
+      const cursorState = JSON.parse(cursor as string) as Cursor
       const seatState = await r.hgetJSON<SeatState>(
         `board:${boardId}:seats`,
         cursorState.seatKey
@@ -210,9 +242,8 @@ class GameController {
       gameState.turnExpireAt = cursorState.expireAt
     }
 
-    const states = seatStates as string[]
-    for (let i = 0; i < states.length; i += 2) {
-      const state = JSON.parse(states[i + 1]) as SeatState
+    for (const seatState of Object.values(seatStates as Dict<string>)) {
+      const state = JSON.parse(seatState) as SeatState
       gameState.seats.push({
         playerId: state.playerId,
         hands: state.hands ? INITIAL_HANDS : undefined,
@@ -230,88 +261,84 @@ class GameController {
     const pl = r.pipeline()
     const js = nats.js()
 
+    // Min bet
+    const board = await cBoards.findOne({ id: boardId })
+    if (!board) {
+      return
+    }
+    const bet = BigInt(board.minChips)
+
+    // Get needed data
+    pl.hgetall(`board:${boardId}:seats`)
+    pl.get(`board:${boardId}:pot`)
+    const [states, potStr] = await pl.flush<[Dict<string>, string]>()
+    let pot = BigInt(potStr)
+    const messages: { subj: string; payload: string }[] = []
+
     // Deal each player two cards
     const cards = shuffle()
-    const states = await r.hgetall(`board:${boardId}:seats`)
-    const messages: { subj: string; payload: string }[] = []
-    for (let i = 0; i < states.length; i += 2) {
-      const seatKey = states[i]
+    for (const seatKey in states) {
+      // Remove players who don't have enough chips
+      const state = JSON.parse(states[seatKey]) as SeatState
+      if (BigInt(state.chips) < bet) {
+        pl.hdel(`board:${boardId}:seats`, seatKey)
+        pl.hset(`board:${boardId}:breaks`, JSON.stringify(state))
+        continue
+      }
+
+      // Give each player two cards
       const hands = [cards.shift(), cards.shift()] as [number, number]
-      const state = JSON.parse(states[i + 1]) as SeatState
       state.hands = hands
+      state.chips = (BigInt(state.chips) - bet).toString()
+      pot += bet
       pl.hset(`board:${boardId}:seats`, seatKey, JSON.stringify(state))
       messages.push({
         subj: `seats.${boardId}.${seatKey}`,
-        payload: JSON.stringify({ hands }),
+        payload: JSON.stringify({ code: GameCode.Deal, hands }),
       })
     }
 
-    // Update deck
+    // Update deck, pot, and round
     pl.del(`board:${boardId}:cards`)
     pl.lpush(`board:${boardId}:cards`, ...cards)
+    pl.set(`board:${boardId}:pot`, pot.toString())
+    pl.incr(`board:${boardId}:roundCount`)
+    await pl.exec()
 
     // Set next turn
-    pl.setex(
-      `board:${boardId}:cursor`,
-      COUNTDOWN,
-      JSON.stringify({
-        seatKey: states[0],
-        expireAt: Date.now() + COUNTDOWN,
-      })
-    )
+    const nextTurn = Object.keys(states)[0]
+    await this.#setNextTurn(boardId, nextTurn)
 
-    await pl.flush()
+    // Publish each player their hands.
     for (const message of messages) {
       js.publish(message.subj, message.payload)
     }
-    this.#sync(boardId)
+
+    await this.#sync(boardId)
   }
 
-  @Post('/sit')
-  @SeatSession(ReadyPayloadSchema)
-  async sit(seat: Seat, payload: ReadyPayload) {
-    const { boardId } = seat
-
-    // Insert seat
-    await r.hsetJSON(`board:${boardId}:seats`, payload.seatKey, {
-      playerId: seat.playerId,
-      chips: seat.chips,
-    })
-
-    // Update seat status
-    seat.status = 'playing'
-    await r.setJSON(`seat:${payload.seatKey}`, seat)
-
-    // Check if enough players
-    const len = await r.hlen(`board:${boardId}:seats`)
-    const roundCount = await r.get(`board:${boardId}:roundCount`)
-    if (len >= 2 && !roundCount) {
-      // Start game
-      this.#deal(boardId)
-    } else {
-      this.#sync(boardId)
-    }
+  #setNextTurn(boardId: string, seatKey: string) {
+    const pl = r.pipeline()
+    pl.setex(`board:${boardId}:timer`, COUNTDOWN, seatKey)
+    pl.set(
+      `board:${boardId}:cursor`,
+      JSON.stringify({
+        seatKey,
+        expireAt: Date.now() + COUNTDOWN * 1000,
+      })
+    )
+    return pl.exec()
   }
 
-  @Post('/bet')
-  @SeatSession(TurnPayloadSchema)
-  async bet(seat: Seat, payload: TurnPayload) {
-    const { seatKey, bet } = payload
+  async #turn(seatKey: string, seat: Seat, bet: bigint) {
     const { boardId, playerId } = seat
 
     // Get needed data
     const pl = r.pipeline()
-    pl.get(`board:${boardId}:cursor`)
     pl.hget(`board:${boardId}:seats`, seatKey)
     pl.hkeys(`board:${boardId}:seats`)
     pl.get(`board:${boardId}:pot`)
-    const [cursor, seatState, seatStateKeys, potStr] = await pl.flush()
-
-    // Check if it's your turn
-    const cursorState = JSON.parse(cursor as string) as CursorState
-    if (cursorState.seatKey !== seatKey) {
-      throw new Http400("It's not your turn")
-    }
+    const [seatState, seatStateKeys, potStr] = await pl.flush()
 
     const state = JSON.parse(seatState as string) as SeatState
     let pot = BigInt(potStr as string)
@@ -319,24 +346,25 @@ class GameController {
     // Check bet
     if (bet > pot) {
       throw new Http400('You can not bet more than pot')
-    } else if (bet < BigInt(seat.chips)) {
+    } else if (bet > BigInt(seat.chips)) {
       throw new Http400('Not enough chips')
     }
+    const isOpen = bet > 0n
 
     // Lock board to prevent double bet
-    const isLocked = await r.setnx(`board:${boardId}:lock`, '1')
-    if (!isLocked) {
-      throw new Http400('Dont play too fast')
-    }
+    // const isLocked = await r.setnx(`board:${boardId}:lock`, '1')
+    // if (!isLocked) {
+    //   throw new Http400('Dont play too fast')
+    // }
 
     // Notify other players
     await nats.js().publish(
-      `state.${boardId}`,
+      `states.${boardId}`,
       JSON.stringify({
-        code: GameCode.Turn,
+        code: GameCode.Bet,
         playerId,
         bet,
-        hands: bet > 0n ? state.hands : INITIAL_HANDS,
+        hands: isOpen ? state.hands : INITIAL_HANDS,
       })
     )
 
@@ -347,7 +375,7 @@ class GameController {
 
     // Compare hands
     // 1-52: SpadesAce ~ ClubsKing
-    if (bet > 0n) {
+    if (isOpen) {
       const numbers = state
         .hands!.map((n) => ((n - 1) % 13) + 1)
         .sort((a, b) => a - b)
@@ -365,11 +393,11 @@ class GameController {
 
       // Push `Open` message
       await nats.js().publish(
-        `state.${boardId}`,
+        `states.${boardId}`,
         JSON.stringify({
           code: GameCode.Open,
           playerId: playerId,
-          card,
+          card: parseInt(card as string),
         })
       )
     }
@@ -381,14 +409,69 @@ class GameController {
     // Update pot
     pl.set(`board:${boardId}:pot`, pot.toString())
 
-    await pl.flush()
+    await pl.exec()
 
-    // Check if this round is over
-    if (nextIndex === 0) {
-      this.#deal(boardId)
+    // Delay 3000ms ensure everyone has received the `Open` message
+    ;(async () => {
+      await sleep(isOpen ? 3000 : 0)
+
+      // Check if this round is over
+      if (nextIndex === 0) {
+        await this.#deal(boardId)
+      } else {
+        await this.#setNextTurn(boardId, seatKeys[nextIndex])
+        await this.#sync(boardId)
+      }
+    })()
+  }
+
+  // TODO : breaks resume
+  // async resume() {}
+
+  @Post('/sit')
+  @SeatSession(ReadyPayloadSchema)
+  async sit(seat: Seat, payload: ReadyPayload) {
+    const { boardId } = seat
+    const { seatKey } = payload
+
+    // Check if player has enough chips
+    const board = await cBoards.findOne({ id: boardId })
+    if (!board) {
+      throw new Http404('Board does not exist')
+    }
+    if (BigInt(seat.chips) < BigInt(board.minChips)) {
+      throw new Http400(`You must stake more than ${board.minChips} chips`)
     }
 
-    this.#sync(boardId)
+    // Check if player is already in the game
+    const isExist = !!(await r.hget(`board:${boardId}:seats`, seatKey))
+    if (isExist) {
+      throw new Http400('You are already in the game')
+    }
+
+    // Insert seat
+    await r.hsetJSON(`board:${boardId}:seats`, seatKey, {
+      playerId: seat.playerId,
+      chips: seat.chips,
+    })
+
+    // Update seat status
+    seat.status = 'playing'
+    await r.setJSON(`seat:${seatKey}`, seat)
+
+    await this.#sync(boardId)
+  }
+
+  @Post('/bet')
+  @SeatSession(BetPayloadSchema)
+  async bet(seat: Seat, payload: BetPayload) {
+    // Check if it's your turn
+    const cursor = await r.getJSON<Cursor>(`board:${seat.boardId}:cursor`)
+    if (!cursor || cursor.seatKey !== payload.seatKey) {
+      throw new Http400("It's not your turn")
+    }
+
+    return this.#turn(payload.seatKey, seat, payload.bet)
   }
 }
 

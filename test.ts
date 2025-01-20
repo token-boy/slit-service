@@ -1,7 +1,6 @@
 // import nats from 'helpers/nats.ts'
 // import { AckPolicy, DeliverPolicy, jetstream, RetentionPolicy } from '@nats-io/jetstream'
 // import { jwtAuthenticator, wsconnect } from "@nats-io/transport-deno";
-// import { r, rSub } from 'helpers/redis.ts'
 
 // await nats.connect()
 // const jsm = nats.jsm()

@@ -16,10 +16,10 @@ export const cPlayers = db.collection<Player>('players')
 export const cBoards = db.collection<{
   id: string
   address: string
-  chips: number
+  chips: string
   dealer: string
   creator: string
-  minChips: number
+  minChips: string
   enabled: boolean
 }>('boards')
 

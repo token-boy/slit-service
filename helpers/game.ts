@@ -42,8 +42,9 @@ export interface Seat {
 export enum GameCode {
   Error = 0,
   Sync = 1,
-  Turn = 2,
+  Bet = 2,
   Open = 3,
+  Deal = 4,
 }
 
 export interface SeatState {
@@ -60,7 +61,7 @@ export interface GameState {
   pot: string
 }
 
-export interface CursorState {
+export interface Cursor {
   expireAt: number
   seatKey: string
 }
@@ -94,8 +95,8 @@ export function SeatSession(Schame: z.AnyZodObject) {
       if (!seat) {
         throw new Http404('Seat key invalid')
       }
-      if (seat.status !== 'ready') {
-        throw new Http404('Seat not ready')
+      if (seat.status === 'unready') {
+        throw new Http400('Seat not ready')
       }
 
       return method.apply(this, [seat, payload, ctx])

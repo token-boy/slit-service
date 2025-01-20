@@ -22,7 +22,7 @@ import { addTxEventListener } from './TxController.ts'
 import { r } from 'helpers/redis.ts'
 
 const CreatePayloadSchama = z.object({
-  minChips: z.number(),
+  minChips: z.bigint({ coerce: true }).nonnegative(),
 })
 type CreatePayload = z.infer<typeof CreatePayloadSchama>
 
@@ -115,10 +115,10 @@ class BoardController {
     await cBoards.insertOne({
       id: uuid,
       address: boardAddress.toBase58(),
-      chips: 0,
+      chips: '0',
       dealer: dealer.publicKey.toBase58(),
       creator: ctx.profile.address,
-      minChips: payload.minChips,
+      minChips: payload.minChips.toString(),
       enabled: false,
     })
 
