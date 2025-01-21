@@ -266,7 +266,7 @@ class Player {
               console.log(
                 `${this.nickname} dealt ${cardNames[hand1]} ${cardNames[hand2]}`
               )
-              const delay = Math.random() * 30000
+              const delay = Math.random() * 15000
               console.log(`${this.nickname} delay ${(delay / 1000).toFixed(1)}s `);
               await sleep(delay)
               if (this.chips) {

@@ -238,6 +238,7 @@ class GameController {
         `board:${boardId}:seats`,
         cursorState.seatKey
       )
+      // FIXME : seatState maybe null
       gameState.turn = seatState!.playerId
       gameState.turnExpireAt = cursorState.expireAt
     }
