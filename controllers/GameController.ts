@@ -7,40 +7,34 @@ import {
 import { Buffer } from 'node:buffer'
 import { z } from 'zod'
 import { AckPolicy, DeliverPolicy } from '@nats-io/jetstream'
+import { decodeBase58, encodeBase64 } from '@std/encoding'
 
 import nats from 'helpers/nats.ts'
 import { Controller, Get, Payload, Post } from 'helpers/route.ts'
-import { cBoards, cKeypairs, cPlayers } from 'models'
+import { BillType, cBills, cBoards, cKeypairs, cPlayers } from 'models'
 import { Http400, Http404 } from 'helpers/http.ts'
 import { Instruction, MAX_PLAYERS, PROGRAM_ID } from 'helpers/constants.ts'
 import {
   type Seat,
-  type SeatState,
-  SeatSession,
   shuffle,
   U64,
   type GameState,
   GameCode,
-  Cursor,
   publishGameState,
+  uiAmount,
 } from 'helpers/game.ts'
-import { decodeBase58, encodeBase64 } from '@std/encoding'
 import { buildTx, sleep } from 'helpers/solana.ts'
 import { r, rSub } from 'helpers/redis.ts'
+import log from 'helpers/log.ts'
 import { auth } from 'middlewares'
 
 import { addTxEventListener } from './TxController.ts'
-import log from 'helpers/log.ts'
 
-const PlayPayloadSchema = z.object({
+const StakePayloadSchema = z.object({
   chips: z.bigint({ coerce: true }).gt(0n),
+  seatKey: z.string().optional(),
 })
-type PlayPayload = z.infer<typeof PlayPayloadSchema>
-
-const ReadyPayloadSchema = z.object({
-  seatKey: z.string(),
-})
-type ReadyPayload = z.infer<typeof ReadyPayloadSchema>
+type StakePayload = z.infer<typeof StakePayloadSchema>
 
 const BetPayloadSchema = z.object({
   seatKey: z.string(),
@@ -49,38 +43,62 @@ const BetPayloadSchema = z.object({
 type BetPayload = z.infer<typeof BetPayloadSchema>
 
 const INITIAL_HANDS: [number, number] = [0, 0]
-const COUNTDOWN = 30
+const COUNTDOWN = 30 // seconds
+const BIGINT_TWO = BigInt(2)
 
 @Controller('/v1/game')
 class GameController {
   constructor() {
-    addTxEventListener(Instruction.Play, this.#handlePlayConfirmed)
+    addTxEventListener(Instruction.Stake, this.#handleStakeConfirmed.bind(this))
     this.#handleTimerExpired()
   }
 
-  async #handlePlayConfirmed(accounts: PublicKey[], data: Uint8Array) {
+  async #handleStakeConfirmed(accounts: PublicKey[], data: Uint8Array) {
     const owner = accounts[0].toBase58()
     const boardId = Buffer.from(data.slice(0, 16)).toString('hex')
+    const chips = Buffer.from(data.slice(16)).readBigUint64LE()
+
+    const board = await cBoards.findOne({ id: boardId })
+    if (!board) {
+      return
+    }
     const seatKey = await r.hget(`owner:${owner}`, boardId)
     if (!seatKey) {
       return
     }
-    const seat = await r.getJSON<Seat>(`seat:${seatKey}`)
+    const seat = await r.getJSON<Seat>(`board:${boardId}:seat:${seatKey}`)
     if (!seat) {
       return
     }
 
-    const id = Buffer.from(data.slice(0, 16)).toString('hex')
-    const chips = Buffer.from(data.slice(16)).readBigUint64LE()
-    if (id !== seat.boardId || chips != BigInt(seat.chips)) {
-      return
+    // Update player chips
+    seat.chips = (BigInt(seat.chips) + chips).toString()
+    await cBills.insertOne({
+      owner,
+      type: BillType.Stake,
+      amount: chips.toString(),
+      boardId,
+      createdAt: Date.now(),
+    })
+
+    // Update board chips
+    board.chips = (BigInt(board.chips) + chips).toString()
+    await cBoards.updateOne(
+      { id: boardId },
+      { $set: { chips: (BigInt(board.chips) + chips).toString() } }
+    )
+
+    // If player has staked enough chips, then add them to the players queue
+    if (BigInt(seat.chips) > BigInt(board.limit) * BIGINT_TWO) {
+      await r.zadd(`board:${boardId}:seats`, Date.now(), seatKey)
     }
 
-    seat.status = 'ready'
-    await r.setJSON(`seat:${seatKey}`, seat)
+    await r.setJSON(`board:${boardId}:seat:${seatKey}`, seat)
+    this.#sync(boardId)
   }
 
   async #handleTimerExpired() {
+    // 打开过期通知
     await rSub.subscribe('__keyevent@0__:expired')
     rSub.on('message', async (_channel, message) => {
       try {
@@ -88,9 +106,9 @@ class GameController {
         if (timer !== 'timer') {
           return
         }
-        const cursor = await r.getJSON<Cursor>(`board:${boardId}:cursor`)
-        if (!cursor) {
-          const len = await r.hlen(`board:${boardId}:seats`)
+        const turnSeatKey = await r.lindex(`board:${boardId}:round`, 0)
+        if (!turnSeatKey) {
+          const len = await r.zcount(`board:${boardId}:seats`, 0, Date.now())
           if (len >= 2) {
             this.#deal(boardId)
           } else {
@@ -98,11 +116,13 @@ class GameController {
           }
           return
         }
-        const seat = await r.getJSON<Seat>(`seat:${cursor.seatKey}`)
+        const seat = await r.getJSON<Seat>(
+          `board:${boardId}:seat:${turnSeatKey}`
+        )
         if (!seat) {
           return
         }
-        this.#turn(cursor.seatKey, seat, 0n)
+        this.#turn(boardId, turnSeatKey, 0n)
       } catch (error) {
         log.error(error)
       }
@@ -144,9 +164,9 @@ class GameController {
     return { sessionId }
   }
 
-  @Post('/:boardId/play', auth)
-  @Payload(PlayPayloadSchema)
-  async play(payload: PlayPayload, ctx: Ctx) {
+  @Post('/:boardId/stake', auth)
+  @Payload(StakePayloadSchema)
+  async stake(payload: StakePayload, ctx: Ctx) {
     const owner = ctx.profile.address
 
     const board = await cBoards.findOne({ id: ctx.params['boardId'] })
@@ -159,7 +179,16 @@ class GameController {
       throw new Http404('Player does not exist')
     }
 
-    if ((await r.hlen(`board:${boardId}:players`)) > MAX_PLAYERS) {
+    // Check if player staked enough chips
+    const minAmount = BigInt(board.limit) * BIGINT_TWO
+    if (BigInt(payload.chips) < minAmount) {
+      throw new Http400(`You must stake more than ${uiAmount(minAmount)} chips`)
+    }
+
+    // Check if board is full
+    if (
+      (await r.zcount(`board:${boardId}:seats`, 0, Date.now())) > MAX_PLAYERS
+    ) {
       throw new Http400('Board is full')
     }
 
@@ -179,7 +208,7 @@ class GameController {
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       ],
       data: Buffer.from([
-        Instruction.Play,
+        Instruction.Stake,
         ...Buffer.from(boardId, 'hex'),
         ...U64.toUint8Array(payload.chips),
       ]),
@@ -188,24 +217,25 @@ class GameController {
     const tx = await buildTx(signer, [ix])
     tx.sign([dealer])
 
-    // Create seat session
-    const seatKey = Math.random().toString(36).slice(2)
-    await r.setJSON<Seat>(`seat:${seatKey}`, {
-      boardId,
-      chips: payload.chips.toString(),
-      playerId: player._id.toString(),
-      owner,
-      status: 'unready',
-    })
-    await r.hset(`owner:${owner}`, boardId, seatKey)
+    let seatKey = payload.seatKey
+    if (!seatKey) {
+      // Create seat session
+      seatKey = Math.random().toString(36).slice(2)
+      await r.setJSON<Seat>(`board:${boardId}:seat:${seatKey}`, {
+        owner,
+        playerId: player._id.toString(),
+        chips: '0',
+      })
+      await r.hset(`owner:${owner}`, boardId, seatKey)
 
-    // Create seat message consumer
-    await nats.jsm().consumers.add(`seat_${boardId}`, {
-      name: seatKey,
-      durable_name: seatKey,
-      filter_subject: `seats.${boardId}.${seatKey}`,
-      ack_policy: AckPolicy.Explicit,
-    })
+      // Create seat message consumer
+      await nats.jsm().consumers.add(`seat_${boardId}`, {
+        name: seatKey,
+        durable_name: seatKey,
+        filter_subject: `seats.${boardId}.${seatKey}`,
+        ack_policy: AckPolicy.Explicit,
+      })
+    }
 
     return {
       tx: encodeBase64(tx.serialize()),
@@ -219,96 +249,98 @@ class GameController {
    */
   async #sync(boardId: string) {
     // Get needed data
-    const pl = r.pipeline()
-    pl.hgetall(`board:${boardId}:seats`)
+    let pl = r.pipeline()
+    pl.zrange(`board:${boardId}:seats`, 0, -1)
     pl.llen(`board:${boardId}:cards`)
-    pl.get(`board:${boardId}:cursor`)
     pl.get(`board:${boardId}:pot`)
-    const [seatStates, deckCount, cursor, pot] = await pl.flush()
+    pl.lindex(`board:${boardId}:round`, 0)
+    pl.get(`board:${boardId}:timer`)
+    const [seatKeys, deckCount, pot, turnSeatKey, turnExpireAt] =
+      await pl.flush()
+    pl = r.pipeline()
+    for (const seatKey of seatKeys) {
+      pl.get(`board:${boardId}:seat:${seatKey}`)
+    }
+    const seats = (await pl.flush<string[]>()).reduce((acc, seat, i) => {
+      acc[seatKeys[i]] = JSON.parse(seat)
+      return acc
+    }, {}) as Dict<Seat>
 
-    const gameState: GameState = {
-      seats: [],
+    const state: GameState = {
+      seats: Object.values(seats).map((seat) => ({
+        playerId: seat.playerId,
+        hands: seat.hands ? INITIAL_HANDS : undefined,
+        chips: seat.chips,
+      })),
       deckCount: deckCount as number,
       pot: pot as string,
     }
 
-    if (cursor) {
-      const cursorState = JSON.parse(cursor as string) as Cursor
-      const seatState = await r.hgetJSON<SeatState>(
-        `board:${boardId}:seats`,
-        cursorState.seatKey
-      )
-      // FIXME : seatState maybe null
-      gameState.turn = seatState!.playerId
-      gameState.turnExpireAt = cursorState.expireAt
+    if (turnSeatKey && seats[turnSeatKey]) {
+      state.turn = seats[turnSeatKey].playerId
+      state.turnExpireAt = turnExpireAt
     }
 
-    for (const seatState of Object.values(seatStates as Dict<string>)) {
-      const state = JSON.parse(seatState) as SeatState
-      gameState.seats.push({
-        playerId: state.playerId,
-        hands: state.hands ? INITIAL_HANDS : undefined,
-        chips: state.chips,
-      })
-    }
-
-    await publishGameState(boardId, gameState)
+    await publishGameState(boardId, state)
   }
 
   /**
    * Deal cards
    */
   async #deal(boardId: string) {
-    const pl = r.pipeline()
+    let pl = r.pipeline()
     const js = nats.js()
 
-    // Min bet
-    const board = await cBoards.findOne({ id: boardId })
-    if (!board) {
-      return
-    }
-    const bet = BigInt(board.minChips)
-
     // Get needed data
-    pl.hgetall(`board:${boardId}:seats`)
+    pl.zrange(`board:${boardId}:seats`, 0, -1)
+    pl.hgetall(`board:${boardId}:settings`)
     pl.get(`board:${boardId}:pot`)
-    const [states, potStr] = await pl.flush<[Dict<string>, string]>()
+    const [seatKeys, settings, potStr] = await pl.flush<
+      [string[], Dict<string>, string]
+    >()
+    pl = r.pipeline()
+    for (const seatKey of seatKeys) {
+      pl.get(`board:${boardId}:seat:${seatKey}`)
+    }
+    const seats = (await pl.flush<string[]>()).reduce((acc, seat, i) => {
+      acc[seatKeys[i]] = JSON.parse(seat)
+      return acc
+    }, {}) as Dict<Seat>
+    pl = r.pipeline()
+
     let pot = BigInt(potStr)
+    const bet = BigInt(settings['limit'])
     const messages: { subj: string; payload: string }[] = []
 
     // Deal each player two cards
     const cards = shuffle()
-    for (const seatKey in states) {
+    for (const [seatKey, seat] of Object.entries(seats)) {
       // Remove players who don't have enough chips
-      const state = JSON.parse(states[seatKey]) as SeatState
-      if (BigInt(state.chips) < bet) {
-        pl.hdel(`board:${boardId}:seats`, seatKey)
-        pl.hset(`board:${boardId}:breaks`, JSON.stringify(state))
+      if (BigInt(seat.chips) < bet * BIGINT_TWO) {
+        pl.zrem(`board:${boardId}:seats`, seatKey)
         continue
       }
 
       // Give each player two cards
       const hands = [cards.shift(), cards.shift()] as [number, number]
-      state.hands = hands
-      state.chips = (BigInt(state.chips) - bet).toString()
+      seat.hands = hands
+      seat.chips = (BigInt(seat.chips) - bet).toString()
       pot += bet
-      pl.hset(`board:${boardId}:seats`, seatKey, JSON.stringify(state))
+      pl.set(`board:${boardId}:seat:${seatKey}`, JSON.stringify(seat))
+      pl.rpush(`board:${boardId}:round`, seatKey)
       messages.push({
         subj: `seats.${boardId}.${seatKey}`,
         payload: JSON.stringify({ code: GameCode.Deal, hands }),
       })
     }
 
-    // Update deck, pot, and round
+    // Update deck, pot, round and timer
     pl.del(`board:${boardId}:cards`)
     pl.lpush(`board:${boardId}:cards`, ...cards)
     pl.set(`board:${boardId}:pot`, pot.toString())
     pl.incr(`board:${boardId}:roundCount`)
-    await pl.exec()
-
-    // Set next turn
-    const nextTurn = Object.keys(states)[0]
-    await this.#setNextTurn(boardId, nextTurn)
+    pl.setex(`board:${boardId}:timer`, COUNTDOWN, Date.now() + COUNTDOWN * 1000)
+    await pl.flush()
 
     // Publish each player their hands.
     for (const message of messages) {
@@ -318,30 +350,16 @@ class GameController {
     await this.#sync(boardId)
   }
 
-  #setNextTurn(boardId: string, seatKey: string) {
-    const pl = r.pipeline()
-    pl.setex(`board:${boardId}:timer`, COUNTDOWN, seatKey)
-    pl.set(
-      `board:${boardId}:cursor`,
-      JSON.stringify({
-        seatKey,
-        expireAt: Date.now() + COUNTDOWN * 1000,
-      })
-    )
-    return pl.exec()
-  }
-
-  async #turn(seatKey: string, seat: Seat, bet: bigint) {
-    const { boardId, playerId } = seat
-
+  async #turn(boardId: string, seatKey: string, bet: bigint) {
     // Get needed data
-    const pl = r.pipeline()
-    pl.hget(`board:${boardId}:seats`, seatKey)
-    pl.hkeys(`board:${boardId}:seats`)
+    let pl = r.pipeline()
+    pl.get(`board:${boardId}:seat:${seatKey}`)
+    pl.lindex(`board:${boardId}:round`, 1)
     pl.get(`board:${boardId}:pot`)
-    const [seatState, seatStateKeys, potStr] = await pl.flush()
+    const [seatStr, nextTurnSeatKey, potStr] = await pl.flush()
+    pl = r.pipeline()
 
-    const state = JSON.parse(seatState as string) as SeatState
+    const seat = JSON.parse(seatStr) as Seat
     let pot = BigInt(potStr as string)
 
     // Check bet
@@ -363,32 +381,27 @@ class GameController {
       `states.${boardId}`,
       JSON.stringify({
         code: GameCode.Bet,
-        playerId,
+        playerId: seat.playerId,
         bet,
-        hands: isOpen ? state.hands : INITIAL_HANDS,
+        hands: isOpen ? seat.hands : INITIAL_HANDS,
       })
     )
-
-    // Get next player
-    const seatKeys = seatStateKeys as string[]
-    const index = seatKeys.findIndex((key) => key === seatKey)
-    const nextIndex = (index + 1) % seatKeys.length
 
     // Compare hands
     // 1-52: SpadesAce ~ ClubsKing
     if (isOpen) {
-      const numbers = state
+      const numbers = seat
         .hands!.map((n) => ((n - 1) % 13) + 1)
         .sort((a, b) => a - b)
       const card = await r.lpop(`board:${boardId}:cards`)
       const next = ((parseInt(card as string) - 1) % 13) + 1
       if (numbers[0] < next && next < numbers[1]) {
         // You win
-        state.chips = (bet + BigInt(state.chips)).toString()
+        seat.chips = (bet + BigInt(seat.chips)).toString()
         pot -= bet
       } else {
         // You lose
-        state.chips = (BigInt(state.chips) - bet).toString()
+        seat.chips = (BigInt(seat.chips) - bet).toString()
         pot += bet
       }
 
@@ -397,82 +410,53 @@ class GameController {
         `states.${boardId}`,
         JSON.stringify({
           code: GameCode.Open,
-          playerId: playerId,
+          playerId: seat.playerId,
           card: parseInt(card as string),
         })
       )
     }
 
     // Update seat state
-    state.hands = undefined
-    pl.hset(`board:${boardId}:seats`, seatKey, JSON.stringify(state))
+    seat.hands = undefined
+    pl.set(`board:${boardId}:seat:${seatKey}`, JSON.stringify(seat))
+    pl.lpop(`board:${boardId}:round`)
 
     // Update pot
     pl.set(`board:${boardId}:pot`, pot.toString())
 
-    await pl.exec()
+    await pl.flush()
 
     // Delay 3000ms ensure everyone has received the `Open` message
     ;(async () => {
       await sleep(isOpen ? 3000 : 0)
 
       // Check if this round is over
-      if (nextIndex === 0) {
-        await this.#deal(boardId)
-      } else {
-        await this.#setNextTurn(boardId, seatKeys[nextIndex])
+      if (nextTurnSeatKey) {
+        await r.setex(
+          `board:${boardId}:timer`,
+          COUNTDOWN,
+          Date.now() + COUNTDOWN * 1000
+        )
         await this.#sync(boardId)
+      } else {
+        await this.#deal(boardId)
       }
     })()
   }
 
-  // TODO : breaks resume
-  // async resume() {}
+  @Post('/:boardId/bet')
+  @Payload(BetPayloadSchema)
+  async bet(payload: BetPayload, ctx: Ctx) {
+    const { seatKey, bet } = payload
+    const { boardId } = ctx.params
 
-  @Post('/sit')
-  @SeatSession(ReadyPayloadSchema)
-  async sit(seat: Seat, payload: ReadyPayload) {
-    const { boardId } = seat
-    const { seatKey } = payload
-
-    // Check if player has enough chips
-    const board = await cBoards.findOne({ id: boardId })
-    if (!board) {
-      throw new Http404('Board does not exist')
-    }
-    if (BigInt(seat.chips) < BigInt(board.minChips)) {
-      throw new Http400(`You must stake more than ${board.minChips} chips`)
-    }
-
-    // Check if player is already in the game
-    const isExist = !!(await r.hget(`board:${boardId}:seats`, seatKey))
-    if (isExist) {
-      throw new Http400('You are already in the game')
-    }
-
-    // Insert seat
-    await r.hsetJSON(`board:${boardId}:seats`, seatKey, {
-      playerId: seat.playerId,
-      chips: seat.chips,
-    })
-
-    // Update seat status
-    seat.status = 'playing'
-    await r.setJSON(`seat:${seatKey}`, seat)
-
-    await this.#sync(boardId)
-  }
-
-  @Post('/bet')
-  @SeatSession(BetPayloadSchema)
-  async bet(seat: Seat, payload: BetPayload) {
     // Check if it's your turn
-    const cursor = await r.getJSON<Cursor>(`board:${seat.boardId}:cursor`)
-    if (!cursor || cursor.seatKey !== payload.seatKey) {
+    const turnSeatKey = await r.lindex(`board:${boardId}:round`, 0)
+    if (seatKey !== turnSeatKey) {
       throw new Http400("It's not your turn")
     }
 
-    return this.#turn(payload.seatKey, seat, payload.bet)
+    return this.#turn(boardId, seatKey, bet)
   }
 }
 

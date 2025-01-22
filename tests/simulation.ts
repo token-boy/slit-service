@@ -213,35 +213,27 @@ class Player {
   }
 
   async enter() {
-    const { seatKey, sessionId } = await this.request(
+    const { sessionId } = await this.request(
       `v1/game/${boardId}/enter`,
       'GET'
     )
-    this.seatKey = seatKey
     const c = await nats.js().consumers.get(`state_${boardId}`, sessionId)
     this.consume(c)
     console.log(`${this.nickname} entered game`)
   }
 
-  async play(chips: number) {
+  async stake(chips: number) {
     const { tx, seatKey, playerId } = await this.request(
-      `v1/game/${boardId}/play`,
+      `v1/game/${boardId}/stake`,
       'POST',
       { chips }
     )
     await this.signSendAndConfirmTx(tx)
     this.seatKey = seatKey
     this.id = playerId
-    console.log(`${this.nickname} joined game`)
-  }
-
-  async sit() {
-    await this.request(`v1/game/sit`, 'POST', {
-      seatKey: this.seatKey,
-    })
-    const c = await nats.js().consumers.get(`seat_${boardId}`, this.seatKey)
+    const c = await nats.js().consumers.get(`seat_${boardId}`, seatKey)
     this.consume(c)
-    console.log(`${this.nickname} sitted`)
+    console.log(`${this.nickname} joined game`)
   }
 
   async consume(c: Consumer) {
@@ -266,12 +258,12 @@ class Player {
               console.log(
                 `${this.nickname} dealt ${cardNames[hand1]} ${cardNames[hand2]}`
               )
-              const delay = Math.random() * 15000
+              const delay = Math.random() * 3000
               console.log(`${this.nickname} delay ${(delay / 1000).toFixed(1)}s `);
               await sleep(delay)
               if (this.chips) {
                 const bet = hand2 - hand1 > 6 ? (10 * SOL_DECIMALS).toString() : '0'
-                await this.request(`v1/game/bet`, 'POST', {
+                await this.request(`v1/game/${boardId}/bet`, 'POST', {
                   seatKey: this.seatKey,
                   bet,
                 })
@@ -336,10 +328,11 @@ async function join(num: number, offset = 0) {
   pl.del(`board:${boardId}:cards`)
   pl.lpush(`board:${boardId}:cards`, ...Array(52).fill(0))
   pl.set(`board:${boardId}:pot`, '0')
+  pl.del(`board:${boardId}:round`, '0')
   pl.set(`board:${boardId}:roundCount`, '0')
   pl.setex(`board:${boardId}:timer`, 30, '0')
   pl.eval(script, 1, '', 'owner:*')
-  pl.eval(script, 1, '', 'seat:*')
+  pl.eval(script, 1, '', `board:${boardId}:seat:*`)
   await pl.exec()
 
   // Reset messages
@@ -378,8 +371,7 @@ async function join(num: number, offset = 0) {
       }
 
       await player.enter()
-      await player.play(100 * SOL_DECIMALS)
-      await player.sit()
+      await player.stake(50 * SOL_DECIMALS)
 
       Deno.writeTextFileSync('players.json', JSON.stringify(players))
     } catch (error) {

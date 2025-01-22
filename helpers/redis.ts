@@ -1,6 +1,7 @@
 // deno-lint-ignore-file no-explicit-any
 
 import { Redis, type RedisOptions, Pipeline } from 'ioredis'
+import log from "helpers/log.ts";
 
 declare module 'ioredis' {
   interface RedisCommander {
@@ -42,11 +43,14 @@ Pipeline.prototype.flush = async function <T>() {
   if (result) {
     return result.map((item) => {
       if (item[0] instanceof Error) {
+        log.error(item)
+        console.trace()
         throw item[0]
       }
       return item[1]
     }) as T
   }
+  console.trace()
   throw new Error('Pipeline error')
 }
 

@@ -15,8 +15,8 @@ export enum Instruction {
   Register = 0x01,
   Swap = 0x02,
   Create = 0x03,
-  Play = 0x04,
-  Settle = 0x05,
+  Stake = 0x04,
+  Redeem = 0x05,
 }
 
 export enum SwapSide {

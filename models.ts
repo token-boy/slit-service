@@ -11,6 +11,13 @@ export interface Player {
   nickname: string
 }
 
+export enum BillType {
+  Deposit = 0,
+  Withdraw = 1,
+  Stake = 2,
+  Redeem = 3,
+}
+
 export const cPlayers = db.collection<Player>('players')
 
 export const cBoards = db.collection<{
@@ -19,7 +26,7 @@ export const cBoards = db.collection<{
   chips: string
   dealer: string
   creator: string
-  minChips: string
+  limit: string
   enabled: boolean
 }>('boards')
 
@@ -28,11 +35,12 @@ export const cKeypairs = db.collection<{
   secretKey: string
 }>('keypairs')
 
-// export async function findByIdOrFail<T>(model: Model<T>, id: string) {
-//   const document = await model.findById(id)
 
-//   if (!document) {
-//     throw new Http404(`${model.modelName} not found`)
-//   }
-//   return document
-// }
+export const cBills = db.collection<{
+  owner: string
+  type: BillType
+  amount: string
+  boardId?: string
+  seatKey?: string
+  createdAt: number
+}>('bills')

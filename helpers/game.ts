@@ -1,8 +1,6 @@
 import { PublicKey } from '@solana/web3.js'
-import { PLAYER, PROGRAM_ID } from 'helpers/constants.ts'
-import { r } from 'helpers/redis.ts'
-import { Http400, Http404 } from 'helpers/http.ts'
-import { z } from 'zod'
+import { PLAYER, PROGRAM_ID, SOL_DECIMALS } from 'helpers/constants.ts'
+import { Http400 } from 'helpers/http.ts'
 import { connection } from 'helpers/solana.ts'
 import nats from 'helpers/nats.ts'
 
@@ -16,27 +14,27 @@ export interface Seat {
   owner: string
 
   /**
-   * The id of the board.
-   */
-  boardId: string
-
-  /**
    * The id of the player.
    */
   playerId: string
 
   /**
-   * The amount of chips the player has staked.
+   * The amount of chips the player current has.
    */
   chips: string
 
   /**
-   * `unready`: Wait for the transaction of stake chips to be confirmed.
-   * `ready`: The transaction of stake chips has been confirmed.
-   * `playing`: Game is in progress.
-   * `settling`: Game is settling.
+   * The hands of the player.
    */
-  status: 'unready' | 'ready' | 'playing' | 'settling'
+  hands?: [number, number]
+
+  // /**
+  //  * `unready`: Wait for the transaction of stake chips to be confirmed.
+  //  * `ready`: The transaction of stake chips has been confirmed.
+  //  * `playing`: Game is in progress.
+  //  * `settling`: Game is settling.
+  //  */
+  // status: 'unready' | 'ready' | 'playing' | 'settling'
 }
 
 export enum GameCode {
@@ -47,23 +45,12 @@ export enum GameCode {
   Deal = 4,
 }
 
-export interface SeatState {
-  playerId: string
-  hands?: [number, number]
-  chips: string
-}
-
 export interface GameState {
-  seats: Omit<SeatState, 'opened'>[]
+  seats: Omit<Seat, 'owner'>[]
   deckCount: number
   turn?: string
   turnExpireAt?: number
   pot: string
-}
-
-export interface Cursor {
-  expireAt: number
-  seatKey: string
 }
 
 export class U64 {
@@ -77,31 +64,6 @@ export function getPlayerAddress(owner: PublicKey) {
     [TE.encode(PLAYER), owner.toBytes()],
     PROGRAM_ID
   )[0]
-}
-
-export function SeatSession(Schame: z.AnyZodObject) {
-  return function (
-    // deno-lint-ignore ban-types
-    _target: Object,
-    _propertyKey: string,
-    descriptor: PropertyDescriptor
-  ) {
-    const method = descriptor.value
-    descriptor.value = async function (ctx: Ctx) {
-      const body = ctx.payload
-      const payload = Schame.parse(body)
-
-      const seat = await r.getJSON<Seat>(`seat:${ctx.payload.seatKey}`)
-      if (!seat) {
-        throw new Http404('Seat key invalid')
-      }
-      if (seat.status === 'unready') {
-        throw new Http400('Seat not ready')
-      }
-
-      return method.apply(this, [seat, payload, ctx])
-    }
-  }
 }
 
 export async function checkTx(signature: string, instructionCode: number) {
@@ -161,4 +123,8 @@ export function publishGameState(boardId: string, state: GameState) {
       ...state,
     })
   )
+}
+
+export function uiAmount(amount: string | bigint) {
+  return (BigInt(amount) / BigInt(SOL_DECIMALS)).toString()
 }

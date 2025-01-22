@@ -22,7 +22,7 @@ import { addTxEventListener } from './TxController.ts'
 import { r } from 'helpers/redis.ts'
 
 const CreatePayloadSchama = z.object({
-  minChips: z.bigint({ coerce: true }).nonnegative(),
+  limit: z.bigint({ coerce: true }).nonnegative(),
 })
 type CreatePayload = z.infer<typeof CreatePayloadSchama>
 
@@ -35,6 +35,11 @@ class BoardController {
   async #handleCreateConfirmed(_accounts: PublicKey[], data: Uint8Array) {
     const id = Buffer.from(data).toString('hex')
 
+    const board = await cBoards.findOne({ id })
+    if (!board) {
+      throw new Http400('Board already exists')
+    }
+
     // Enable board
     await cBoards.updateOne(
       { id },
@@ -46,9 +51,12 @@ class BoardController {
     )
 
     // Initialize redis state
-    await r.lpush(`board:${id}:cards`, ...Array(52).fill(0))
-    await r.set(`board:${id}:pot`, '0')
-    await r.set(`board:${id}:roundCount`, '0')
+    const pl = r.pipeline()
+    pl.lpush(`board:${id}:cards`, ...Array(52).fill(0))
+    pl.set(`board:${id}:pot`, '0')
+    pl.set(`board:${id}:roundCount`, '0')
+    pl.hset(`board:${id}:settings`, 'limit', board.limit)
+    await pl.exec()
 
     // Global state stream
     await nats.jsm().streams.add({
@@ -118,7 +126,7 @@ class BoardController {
       chips: '0',
       dealer: dealer.publicKey.toBase58(),
       creator: ctx.profile.address,
-      minChips: payload.minChips.toString(),
+      limit: payload.limit.toString(),
       enabled: false,
     })
 
@@ -132,7 +140,7 @@ class BoardController {
   boards() {
     return cBoards
       .find({ enabled: true })
-      .project({ id: 1, address: 1, chips: 1, minChips: 1 })
+      .project({ id: 1, address: 1, chips: 1, limit: 1 })
       .sort({ _id: -1 })
       .toArray()
   }
