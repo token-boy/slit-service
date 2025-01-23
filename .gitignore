@@ -2,3 +2,4 @@ node_modules
 key
 .env
 tests/players.json
+test.ts

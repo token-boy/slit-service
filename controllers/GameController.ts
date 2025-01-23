@@ -98,7 +98,6 @@ class GameController {
   }
 
   async #handleTimerExpired() {
-    // 打开过期通知
     await rSub.subscribe('__keyevent@0__:expired')
     rSub.on('message', async (_channel, message) => {
       try {
