@@ -1,4 +1,5 @@
 import { Application, Router } from '@oak/oak'
+import process from "node:process"
 
 import initRoutes from 'controllers'
 import { cors } from 'middlewares'
@@ -13,10 +14,10 @@ const router = new Router()
 
 const port = parseInt(Deno.env.get('PORT') ?? '8000')
 
-globalThis.addEventListener('unhandledRejection', (error) => {
+process.on('unhandledRejection', (error) => {
   log.error(error)
 })
-globalThis.addEventListener('uncaughtException', (error) => {
+process.on('uncaughtException', (error) => {
   log.error(error)
 })
 

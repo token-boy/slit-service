@@ -27,14 +27,6 @@ export interface Seat {
    * The hands of the player.
    */
   hands?: [number, number]
-
-  // /**
-  //  * `unready`: Wait for the transaction of stake chips to be confirmed.
-  //  * `ready`: The transaction of stake chips has been confirmed.
-  //  * `playing`: Game is in progress.
-  //  * `settling`: Game is settling.
-  //  */
-  // status: 'unready' | 'ready' | 'playing' | 'settling'
 }
 
 export enum GameCode {
@@ -42,7 +34,6 @@ export enum GameCode {
   Sync = 1,
   Bet = 2,
   Open = 3,
-  Deal = 4,
 }
 
 export interface GameState {

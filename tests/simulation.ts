@@ -108,12 +108,9 @@ interface Bet {
   hands: Hands
 }
 
-interface Deal {
-  code: GameCode.Deal
-  hands: Hands
-}
+type Message = Sync | Bet
 
-type Message = Sync | Bet | Deal
+const TEST_MY_INDEX = parseInt(Deno.env.get('TEST_MY_INDEX') || '0')
 
 class Player {
   signer: Keypair
@@ -213,13 +210,17 @@ class Player {
   }
 
   async enter() {
-    const { sessionId } = await this.request(
-      `v1/game/${boardId}/enter`,
-      'GET'
-    )
+    const { sessionId } = await this.request(`v1/game/${boardId}/enter`, 'GET')
     const c = await nats.js().consumers.get(`state_${boardId}`, sessionId)
     this.consume(c)
     console.log(`${this.nickname} entered game`)
+  }
+
+  async getHands() {
+    const { hands } = await this.request(`v1/game/${boardId}/hands`, 'POST', {
+      seatKey: this.seatKey,
+    })
+    this.hands = hands
   }
 
   async stake(chips: number) {
@@ -231,8 +232,6 @@ class Player {
     await this.signSendAndConfirmTx(tx)
     this.seatKey = seatKey
     this.id = playerId
-    const c = await nats.js().consumers.get(`seat_${boardId}`, seatKey)
-    this.consume(c)
     console.log(`${this.nickname} joined game`)
   }
 
@@ -245,13 +244,11 @@ class Player {
           const mySeat = msg.seats.find((s) => s.playerId === this.id)
           if (mySeat) {
             this.chips = mySeat.chips
-            // console.log(
-            //   `${this.nickname} chips: ${(
-            //     BigInt(this.chips) / BigInt(SOL_DECIMALS)
-            //   ).toString()}`
-            // )
+            if (mySeat.hands) {
+              await this.getHands()
+            }
 
-            if (msg.turn === this.id && this.hands) {
+            if (msg.turn === this.id && this.hands && TEST_MY_INDEX !== this.index) {
               const [hand1, hand2] = this.hands
                 .map((n) => ((n - 1) % 13) + 1)
                 .sort((a, b) => a - b)
@@ -259,10 +256,13 @@ class Player {
                 `${this.nickname} dealt ${cardNames[hand1]} ${cardNames[hand2]}`
               )
               const delay = Math.random() * 3000
-              console.log(`${this.nickname} delay ${(delay / 1000).toFixed(1)}s `);
+              console.log(
+                `${this.nickname} delay ${(delay / 1000).toFixed(1)}s `
+              )
               await sleep(delay)
               if (this.chips) {
-                const bet = hand2 - hand1 > 6 ? (10 * SOL_DECIMALS).toString() : '0'
+                const bet =
+                  hand2 - hand1 > 6 ? (10 * SOL_DECIMALS).toString() : '0'
                 await this.request(`v1/game/${boardId}/bet`, 'POST', {
                   seatKey: this.seatKey,
                   bet,
@@ -271,9 +271,6 @@ class Player {
               }
             }
           }
-        } else if (msg.code === GameCode.Deal) {
-          this.hands = msg.hands
-          m.ack()
         }
       } catch (error) {
         console.error(error)
@@ -295,7 +292,14 @@ class Player {
 const boardId = Deno.args[0]
 
 async function createPlayer(index: number) {
-  const signer = Keypair.generate()
+  let signer: Keypair
+  if (TEST_MY_INDEX === index) {
+    signer = Keypair.fromSecretKey(
+      decodeBase58(Deno.env.get('TEST_MY_PRIVATE_KEY')!)
+    )
+  } else {
+    signer = Keypair.generate()
+  }
   await connection.requestAirdrop(signer.publicKey, 100 * SOL_DECIMALS)
 
   const player = new Player({ signer, index })
@@ -319,7 +323,7 @@ const script = `
   return 0
 `
 
-async function join(num: number, offset = 0) {
+async function join(num: number) {
   // Reset board state
   await r.connect()
   const pl = r.pipeline()
@@ -338,7 +342,6 @@ async function join(num: number, offset = 0) {
   // Reset messages
   await nats.connect()
   await clearStream(`state_${boardId}`)
-  await clearStream(`seat_${boardId}`)
 
   try {
     Deno.statSync('players.json')
@@ -366,7 +369,7 @@ async function join(num: number, offset = 0) {
     try {
       let player = players[i]
       if (!player) {
-        player = await createPlayer(offset + i)
+        player = await createPlayer(i)
         players.push(player)
       }
 
@@ -380,4 +383,4 @@ async function join(num: number, offset = 0) {
   })
 }
 
-join(9, 0)
+join(10)

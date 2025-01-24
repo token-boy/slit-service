@@ -10,7 +10,7 @@ import { encodeBase64 } from '@std/encoding/base64'
 import { Controller, Get, Payload, Post } from 'helpers/route.ts'
 import { Instruction, PROGRAM_ID, BOARD } from 'helpers/constants.ts'
 import { buildTx, connection } from 'helpers/solana.ts'
-import { Http400 } from 'helpers/http.ts'
+import { Http400, Http404 } from 'helpers/http.ts'
 import { publishGameState, TE } from 'helpers/game.ts'
 import auth from '../middlewares/auth.ts'
 import { cBoards, cKeypairs } from 'models'
@@ -32,7 +32,11 @@ class BoardController {
     addTxEventListener(Instruction.Create, this.#handleCreateConfirmed)
   }
 
-  async #handleCreateConfirmed(_accounts: PublicKey[], data: Uint8Array) {
+  async #handleCreateConfirmed(
+    _accounts: PublicKey[],
+    data: Uint8Array,
+    signatures: string[]
+  ) {
     const id = Buffer.from(data).toString('hex')
 
     const board = await cBoards.findOne({ id })
@@ -45,7 +49,8 @@ class BoardController {
       { id },
       {
         $set: {
-          enabled: true,
+          confirmed: true,
+          signature: signatures[0],
         },
       }
     )
@@ -65,14 +70,6 @@ class BoardController {
       max_bytes: -1,
       retention: RetentionPolicy.Limits,
       discard: DiscardPolicy.Old,
-    })
-
-    // Seat stream
-    await nats.jsm().streams.add({
-      name: `seat_${id}`,
-      subjects: [`seats.${id}.*`],
-      max_bytes: -1,
-      retention: RetentionPolicy.Workqueue,
     })
 
     // Publish initial state
@@ -124,10 +121,12 @@ class BoardController {
       id: uuid,
       address: boardAddress.toBase58(),
       chips: '0',
+      players: 0,
       dealer: dealer.publicKey.toBase58(),
       creator: ctx.profile.address,
       limit: payload.limit.toString(),
-      enabled: false,
+      confirmed: false,
+      createdAt: Date.now(),
     })
 
     return {
@@ -139,10 +138,26 @@ class BoardController {
   @Get()
   boards() {
     return cBoards
-      .find({ enabled: true })
+      .find({ confirmed: true })
       .project({ id: 1, address: 1, chips: 1, limit: 1 })
       .sort({ _id: -1 })
       .toArray()
+  }
+
+  @Get('/:id')
+  async findById(ctx: Ctx) {
+    const board = await cBoards.findOne(
+      {
+        id: ctx.params.id,
+        confirmed: true,
+      },
+      { projection: { limit: 1 } }
+    )
+    if (!board) {
+      throw new Http404('Board does not exist')
+    }
+
+    return board
   }
 }
 

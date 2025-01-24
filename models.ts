@@ -6,9 +6,10 @@ const db = mClient.db('slit')
 export interface Player {
   owner: string
   address: string
-  chips: number
+  chips: string
   avatarUrl: string
   nickname: string
+  signature: string
 }
 
 export enum BillType {
@@ -18,16 +19,31 @@ export enum BillType {
   Redeem = 3,
 }
 
+export interface Bill {
+  owner: string
+  type: BillType
+  amount: string
+  fee?: string
+  boardId?: string
+  seatKey?: string
+  confirmed: boolean
+  signature?: string
+  createdAt: number
+}
+
 export const cPlayers = db.collection<Player>('players')
 
 export const cBoards = db.collection<{
   id: string
   address: string
   chips: string
+  players: number
   dealer: string
   creator: string
   limit: string
-  enabled: boolean
+  confirmed: boolean
+  signature?: string
+  createdAt: number
 }>('boards')
 
 export const cKeypairs = db.collection<{
@@ -36,11 +52,4 @@ export const cKeypairs = db.collection<{
 }>('keypairs')
 
 
-export const cBills = db.collection<{
-  owner: string
-  type: BillType
-  amount: string
-  boardId?: string
-  seatKey?: string
-  createdAt: number
-}>('bills')
+export const cBills = db.collection<Bill>('bills')

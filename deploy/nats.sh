@@ -30,7 +30,7 @@ nsc delete user -n player
 nsc add user --name player
 nsc edit user -n player --allow-pub "\$JS.API.CONSUMER.INFO.>" 
 nsc edit user -n player --allow-pub "\$JS.API.CONSUMER.MSG.NEXT.>" 
-nsc edit user -n player --allow-pub "\$JS.ACK.game.>"
+nsc edit user -n player --allow-pub "\$JS.ACK.*>"
 cat ~/.local/share/nats/nsc/keys/creds/memory/Default/player.creds
 
 nsc add user --name dealer

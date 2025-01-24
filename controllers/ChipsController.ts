@@ -26,7 +26,10 @@ import {
 import { buildTx, connection } from 'helpers/solana.ts'
 import { Http400 } from 'helpers/http.ts'
 import { getPlayerAddress, U64 } from 'helpers/game.ts'
-import auth from '../middlewares/auth.ts'
+import {auth} from 'middlewares'
+import { BillType, cBills, cPlayers } from 'models'
+
+import { addTxEventListener } from './TxController.ts'
 
 const SwapPayloadSchema = z.object({
   amount: z.bigint({ coerce: true }).gt(0n),
@@ -35,10 +38,49 @@ type SwapPayload = z.infer<typeof SwapPayloadSchema>
 
 @Controller('/v1/chips', auth)
 class ChipsController {
-  constructor() {}
+  constructor() {
+    addTxEventListener(Instruction.Swap, this.#handleSwapConfirmed.bind(this))
+  }
 
-  private async swap(address: string, side: SwapSide, amount: bigint) {
-    const player = new PublicKey(address)
+  async #handleSwapConfirmed(
+    accounts: PublicKey[],
+    data: Uint8Array,
+    signatures: string[]
+  ) {
+    const owner = accounts[0].toBase58()
+    const side = data.at(0)
+    const amount = Buffer.from(data.slice(1)).readBigUint64LE()
+
+    const player = await cPlayers.findOne({ owner })
+    if (!player) {
+      throw new Http400('Player does not exist')
+    }
+    const balance = BigInt(player.chips)
+
+    await cPlayers.updateOne(
+      { owner },
+      {
+        $set: {
+          chips: (side === SwapSide.Deposit
+            ? balance + amount
+            : balance - amount
+          ).toString(),
+        },
+      }
+    )
+
+    cBills.insertOne({
+      type: side === SwapSide.Deposit ? BillType.Deposit : BillType.Withdraw,
+      owner,
+      amount: amount.toString(),
+      confirmed: true,
+      signature: signatures[0],
+      createdAt: Date.now(),
+    })
+  }
+
+  async #swap(owner: string, side: SwapSide, amount: bigint) {
+    const player = new PublicKey(owner)
     const playerAddress = getPlayerAddress(player)
 
     const accountInfo = await connection.getAccountInfo(playerAddress)
@@ -76,13 +118,13 @@ class ChipsController {
   @Post()
   @Payload(SwapPayloadSchema)
   deposit(payload: SwapPayload, ctx: Ctx) {
-    return this.swap(ctx.profile.address, SwapSide.Deposit, payload.amount)
+    return this.#swap(ctx.profile.address, SwapSide.Deposit, payload.amount)
   }
 
   @Delete()
   @QueryParams(SwapPayloadSchema)
   withdraw(payload: SwapPayload, ctx: Ctx) {
-    return this.swap(ctx.profile.address, SwapSide.Withdraw, payload.amount)
+    return this.#swap(ctx.profile.address, SwapSide.Withdraw, payload.amount)
   }
 
   @Get()

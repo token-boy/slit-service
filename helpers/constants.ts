@@ -27,7 +27,7 @@ export enum SwapSide {
 export const SOL_DECIMALS = Math.pow(10, 9)
 
 export const CHIPS_RATE = 1000;
-export const FEE_RATE = 100;
+export const FEE_RATE = BigInt(100);
 
 export const TREASURY_PDA = new PublicKey(
   'DHXbu1dyy4eCZEgjYDMtpLtHNtx6C2znFZTU9xqukfzm'

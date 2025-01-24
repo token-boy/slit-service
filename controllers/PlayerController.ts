@@ -29,13 +29,18 @@ class PlayerController {
     addTxEventListener(Instruction.Register, this.#handleRegisterConfirmed)
   }
 
-  async #handleRegisterConfirmed(accounts: PublicKey[]) {
+  async #handleRegisterConfirmed(
+    accounts: PublicKey[],
+    _data: Uint8Array,
+    signatures: string[]
+  ) {
     await cPlayers.insertOne({
       owner: accounts[0].toBase58(),
       address: accounts[1].toBase58(),
-      chips: 0,
+      chips: '0',
       avatarUrl: 'default-avatar.jpeg',
       nickname: 'Pavel Durov',
+      signature: signatures[0],
     })
   }
 
@@ -89,7 +94,7 @@ class PlayerController {
   @Payload(UpdateProfilePayloadSchame)
   async updateProfile(payload: UpdateProfilePayload, ctx: Ctx) {
     const player = await cPlayers.findOne({ owner: ctx.profile.address })
-    if (!player ) {
+    if (!player) {
       throw new Http404('Player does not exist')
     }
     await cPlayers.updateOne(

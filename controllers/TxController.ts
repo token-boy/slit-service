@@ -6,6 +6,7 @@ import { Controller, Payload, Post } from 'helpers/route.ts'
 import { sendAndConfirm } from 'helpers/solana.ts'
 import { Instruction, PROGRAM_ID } from 'helpers/constants.ts'
 import { Http400 } from 'helpers/http.ts'
+import { encodeBase58 } from '@std/encoding'
 
 const CreatePayloadSchema = z.object({
   tx: z.string(),
@@ -14,7 +15,8 @@ type CreatePayload = z.infer<typeof CreatePayloadSchema>
 
 type TxEventListener = (
   accounts: PublicKey[],
-  data: Uint8Array
+  data: Uint8Array,
+  signatures: string[]
 ) => Promise<void>
 
 const listeners: Map<Instruction, TxEventListener> = new Map()
@@ -56,7 +58,11 @@ class TxController {
     // Emit the transaction confirmed event for all listeners.
     const listener = listeners.get(instruction.data.at(0) as Instruction)
     if (listener) {
-      await listener(staticAccountKeys, instruction.data.slice(1))
+      await listener(
+        staticAccountKeys,
+        instruction.data.slice(1),
+        tx.signatures.map((sig) => encodeBase58(sig))
+      )
     }
 
     return { signature }
