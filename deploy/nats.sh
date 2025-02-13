@@ -17,6 +17,11 @@ docker run --detach \
   --label=traefik.http.services.nats-ui.loadbalancer.server.port=8222 \
   nats:latest
 
+nsc add operator --name memory
+nsc add account --name SYS
+nsc edit operator --system-account SYS
+
+nsc add account --name Default
 nsc edit account -n Default --js-enable 1
 nsc edit account -n Default \
   --js-tier 1 \

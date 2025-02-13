@@ -5,7 +5,7 @@ export const TREASURY = 'treasury'
 export const BOARD = 'board'
 
 export const PROGRAM_ID = new PublicKey(
-  '79uMyLzwnjDgjTX1aMTxShygBaCkzWV5enXt3HD22vK'
+  '9NZYenyM5utBQ1uFneERRxS4oc2crY5xBHQq3TMWBaym'
 )
 
 export const ONE_MINUTE = 1000 * 60
@@ -30,10 +30,10 @@ export const CHIPS_RATE = 1000;
 export const FEE_RATE = BigInt(100);
 
 export const TREASURY_PDA = new PublicKey(
-  'DHXbu1dyy4eCZEgjYDMtpLtHNtx6C2znFZTU9xqukfzm'
+  'A3Hj73Uh2nDvoMLJ1kTn3KgCNZNRdgTCW3hYeCRCwDJv'
 )
 export const FEE_VAULT_PDA = new PublicKey(
-  '4M8D7JypYCz24biaYcy6AiuXuuYVHeH6fooNbFhKMAgk'
+  '6gAovy9dx2wKdat2H3DAPtZwzN7HPVVYeZzyn5YiF9tj'
 )
 
 export const MAX_PLAYERS = 10

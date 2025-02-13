@@ -17,6 +17,9 @@ const feeVaultPDA = PublicKey.findProgramAddressSync(
   PROGRAM_ID
 )[0]
 
+console.log(`Treasury PDA: ${treasuryPDA.toBase58()}`);
+console.log(`Fee Vault PDA: ${feeVaultPDA.toBase58()}`);
+
 const ix = new TransactionInstruction({
   programId: PROGRAM_ID,
   keys: [
