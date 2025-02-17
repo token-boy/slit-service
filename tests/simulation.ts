@@ -383,4 +383,4 @@ async function join(num: number) {
   })
 }
 
-join(10)
+join(3)
