@@ -32,9 +32,9 @@ try {
   app.use(router.allowedMethods())
   app.use(cors)
 
-  log.info(`Listening on http://localhost:${port}`)
+  log.info(`Listening on http://0.0.0.0:${port}`)
 
-  await app.listen({ port })
+  await app.listen({ hostname: '0.0.0.0', port })
 } catch (error) {
   log.error(error)
 }

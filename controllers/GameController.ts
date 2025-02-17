@@ -117,7 +117,7 @@ class GameController {
     )
 
     // If player has staked enough chips, then add them to the players queue
-    if (BigInt(seat.chips) > BigInt(board.limit) * BIGINT_TWO) {
+    if (BigInt(seat.chips) >= BigInt(board.limit) * BIGINT_TWO) {
       await r.zadd(`board:${boardId}:seats`, Date.now(), seatKey)
     }
 
@@ -183,7 +183,12 @@ class GameController {
   @Get('/:boardId/enter')
   async enter(ctx: Ctx) {
     const { boardId } = ctx.params
-    const board = await cBoards.findOne({ id: boardId })
+    const board = await cBoards.findOne(
+      { id: boardId },
+      {
+        projection: ['limit'],
+      }
+    )
     if (!board) {
       throw new Http404('Board does not exist')
     }
@@ -210,10 +215,15 @@ class GameController {
     if (seatKey) {
       const seat = await r.getJSON<Seat>(`board:${boardId}:seat:${seatKey}`)
       if (seat) {
-        return { sessionId, seatKey, seat }
+        return {
+          sessionId,
+          seatKey,
+          seat,
+          board,
+        }
       }
     }
-    return { sessionId }
+    return { sessionId, board }
   }
 
   @Post('/:boardId/stake', auth)
@@ -411,9 +421,8 @@ class GameController {
       // Get needed data
       let pl = r.pipeline()
       pl.get(`board:${boardId}:seat:${seatKey}`)
-      pl.zrange(`board:${boardId}:round`, 1, 1)
       pl.get(`board:${boardId}:pot`)
-      const [seatStr, [nextTurnSeatKey], potStr] = await pl.flush()
+      const [seatStr, potStr] = await pl.flush()
       pl = r.pipeline()
 
       const seat = JSON.parse(seatStr) as Seat
@@ -477,25 +486,34 @@ class GameController {
 
       await pl.flush()
 
-      // Delay 3000ms ensure everyone has received the `Open` message
+      // Delay 2000ms ensure everyone has received the `Open` message
       ;(async () => {
-        await sleep(isOpen ? 3000 : 0)
-
-        // Check if this round is over
-        if (nextTurnSeatKey) {
-          await r.setex(
-            `board:${boardId}:timer`,
-            COUNTDOWN,
-            Date.now() + COUNTDOWN * 1000
-          )
-          await this.#sync(boardId)
-        } else {
-          await this.#deal(boardId)
-        }
+        await sleep(isOpen ? 2000 : 0)
+        this.#setNextTurn(boardId)
       })()
     } finally {
       // Unlock board
       await r.del(lockKey)
+    }
+  }
+
+  async #setNextTurn(boardId: string) {
+    const pl = r.pipeline()
+    pl.zrange(`board:${boardId}:round`, 0, 0)
+    pl.get(`board:${boardId}:pot`)
+    const [[seatKey], potStr] = await pl.flush()
+
+    // Check if this round is over
+    if (seatKey && BigInt(potStr) > 0n) {
+      await r.setex(
+        `board:${boardId}:timer`,
+        COUNTDOWN,
+        Date.now() + COUNTDOWN * 1000
+      )
+      await this.#sync(boardId)
+    } else {
+      await this.#sync(boardId)
+      await this.#deal(boardId)
     }
   }
 
@@ -627,10 +645,17 @@ class GameController {
       if (!bill) {
         // Remove player from game
         const pl = r.pipeline()
+
+        pl.zrange(`board:${boardId}:round`, 0, 0)
         pl.zrem(`board:${boardId}:round`, seatKey)
         pl.zrem(`board:${boardId}:seats`, seatKey)
+        pl.del(`board:${boardId}:seat:${seatKey}`)
         pl.hdel(`owner:${owner}`, boardId)
-        await pl.flush()
+        const [[turnSeatKey]] = await pl.flush()
+
+        if (turnSeatKey === seatKey) {
+          this.#setNextTurn(boardId)
+        }
 
         // Insert bill
         await cBills.insertOne({
@@ -655,7 +680,6 @@ class GameController {
             $inc: { players: -1 },
           }
         )
-        nats.jsm().consumers.delete(`seat_${boardId}`, seatKey)
       }
 
       return {
