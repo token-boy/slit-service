@@ -9,6 +9,8 @@ import {
   jetstreamManager,
 } from '@nats-io/jetstream'
 
+import { TE } from "helpers/game.ts";
+
 class Nats {
   #nc: NatsConnection
   #jsm: JetStreamManager
@@ -19,7 +21,7 @@ class Nats {
       servers: Deno.env.get('NATS_SERVER'),
       authenticator: jwtAuthenticator(
         Deno.env.get('NATS_DEALER_JWT') as string,
-        new TextEncoder().encode(Deno.env.get('NATS_DEALER_NKEY'))
+        TE.encode(Deno.env.get('NATS_DEALER_NKEY'))
       ),
     })
     this.#jsm = await jetstreamManager(this.#nc)

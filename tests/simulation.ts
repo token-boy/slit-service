@@ -15,6 +15,11 @@ import { clearStream } from './clear_stream.ts'
 import nats from 'helpers/nats.ts'
 import { Consumer } from '@nats-io/jetstream/internal'
 
+const network = Deno.args[0]
+const boardId = Deno.args[1]
+const num = parseInt(Deno.args[2] || '3')
+const perBet = network === 'localnet' ? 10 : 1
+
 const nicknames = [
   'John',
   'Michael',
@@ -248,7 +253,11 @@ class Player {
               await this.getHands()
             }
 
-            if (msg.turn === this.id && this.hands && TEST_MY_INDEX !== this.index) {
+            if (
+              msg.turn === this.id &&
+              this.hands &&
+              TEST_MY_INDEX !== this.index
+            ) {
               const [hand1, hand2] = this.hands
                 .map((n) => ((n - 1) % 13) + 1)
                 .sort((a, b) => a - b)
@@ -262,7 +271,7 @@ class Player {
               await sleep(delay)
               if (this.chips) {
                 const bet =
-                  hand2 - hand1 > 6 ? (10 * SOL_DECIMALS).toString() : '0'
+                  hand2 - hand1 > 6 ? (perBet * SOL_DECIMALS).toString() : '0'
                 await this.request(`v1/game/${boardId}/bet`, 'POST', {
                   seatKey: this.seatKey,
                   bet,
@@ -288,8 +297,6 @@ class Player {
     }
   }
 }
-
-const boardId = Deno.args[0]
 
 async function createPlayer(index: number) {
   let signer: Keypair
@@ -323,7 +330,7 @@ const script = `
   return 0
 `
 
-async function join(num: number) {
+async function prepare() {
   // Reset board state
   await r.connect()
   const pl = r.pipeline()
@@ -342,17 +349,21 @@ async function join(num: number) {
   // Reset messages
   await nats.connect()
   await clearStream(`state_${boardId}`)
+}
+
+async function joinLocalnet(num: number) {
+  await prepare()
 
   try {
-    Deno.statSync('players.json')
+    Deno.statSync('players.localnet.json')
   } catch (error) {
     if (error instanceof Deno.errors.NotFound) {
-      Deno.writeTextFileSync('players.json', '[]')
+      Deno.writeTextFileSync('players.localnet.json', '[]')
     }
   }
 
   const players: Player[] = JSON.parse(
-    Deno.readTextFileSync('players.json')
+    Deno.readTextFileSync('players.localnet.json')
   ).map(
     // deno-lint-ignore no-explicit-any
     (p: any) =>
@@ -376,11 +387,44 @@ async function join(num: number) {
       await player.enter()
       await player.stake(50 * SOL_DECIMALS)
 
-      Deno.writeTextFileSync('players.json', JSON.stringify(players))
+      Deno.writeTextFileSync('players.localnet.json', JSON.stringify(players))
     } catch (error) {
       console.error(error)
     }
   })
 }
 
-join(3)
+async function joinDevnet(num: number) {
+  await prepare()
+  
+  const players: Player[] = JSON.parse(
+    Deno.readTextFileSync('players.devnet.json')
+  ).map(
+    // deno-lint-ignore no-explicit-any
+    (p: any) =>
+      new Player({
+        signer: Keypair.fromSecretKey(decodeBase58(p.privateKey)),
+        index: p.index,
+        nickname: p.nickname,
+        accessToken: p.accessToken,
+        id: p.id,
+      })
+  )
+
+  Array.from({ length: num }).forEach(async (_, i) => {
+    try {
+      const player = players[i]
+
+      await player.enter()
+      await player.stake(5 * SOL_DECIMALS)
+    } catch (error) {
+      console.error(error)
+    }
+  })
+}
+
+if (network === 'localnet') {
+  joinLocalnet(num)
+} else if (network === 'devnet') {
+  joinDevnet(num)
+}

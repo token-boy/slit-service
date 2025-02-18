@@ -5,15 +5,15 @@ import { Instruction } from "helpers/constants.ts";
 import { buildTx, sendAndConfirm } from "helpers/solana.ts";
 import { Buffer } from "node:buffer";
 import { PLAYER } from "helpers/constants.ts";
+import { TE } from "helpers/game.ts";
 
 const signer = Keypair.fromSecretKey(decodeBase58(Deno.args[0]))
-const encoder = new TextEncoder()
 const treasuryPDA = PublicKey.findProgramAddressSync(
-  [encoder.encode(TREASURY)],
+  [TE.encode(TREASURY)],
   PROGRAM_ID
 )[0]
 const feeVaultPDA = PublicKey.findProgramAddressSync(
-  [encoder.encode(PLAYER), signer.publicKey.toBytes()],
+  [TE.encode(PLAYER), signer.publicKey.toBytes()],
   PROGRAM_ID
 )[0]
 

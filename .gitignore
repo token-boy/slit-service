@@ -1,5 +1,5 @@
 node_modules
 key
 .env
-tests/players.json
+tests/players.*.json
 test.ts
