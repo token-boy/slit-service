@@ -5,19 +5,20 @@ import {
   SystemProgram,
   Keypair,
 } from '@solana/web3.js'
-import { encodeBase64 } from '@std/encoding/base64'
+import { encodeBase58, encodeBase64 } from '@std/encoding'
 
-import { Controller, Get, Payload, Post } from 'helpers/route.ts'
+import { Long } from 'mongodb'
+import { DiscardPolicy, RetentionPolicy } from '@nats-io/jetstream'
+import { z } from 'zod'
+
+import { Controller, Get, Payload, Post, QueryParams } from 'helpers/route.ts'
 import { Instruction, PROGRAM_ID, BOARD } from 'helpers/constants.ts'
 import { buildTx, connection } from 'helpers/solana.ts'
 import { Http400, Http404 } from 'helpers/http.ts'
 import { publishGameState, TE } from 'helpers/game.ts'
 import auth from '../middlewares/auth.ts'
 import { cBoards, cKeypairs } from 'models'
-import { encodeBase58 } from '@std/encoding'
-import { z } from 'zod'
 import nats from 'helpers/nats.ts'
-import { DiscardPolicy, RetentionPolicy } from '@nats-io/jetstream'
 import { addTxEventListener } from './TxController.ts'
 import { r } from 'helpers/redis.ts'
 
@@ -25,6 +26,13 @@ const CreatePayloadSchama = z.object({
   limit: z.bigint({ coerce: true }).nonnegative(),
 })
 type CreatePayload = z.infer<typeof CreatePayloadSchama>
+
+const ListPayloadSchama = z.object({
+  minPlayers: z.string().optional(),
+  limit: z.string().optional(),
+  page: z.number({ coerce: true }). nonnegative().default(1),
+})
+type ListPayload = z.infer<typeof ListPayloadSchama>
 
 @Controller('/v1/boards')
 class BoardController {
@@ -136,12 +144,33 @@ class BoardController {
   }
 
   @Get()
-  boards() {
-    return cBoards
-      .find({ confirmed: true })
-      .project({ id: 1, address: 1, chips: 1, limit: 1 })
+  @QueryParams(ListPayloadSchama)
+  async boards(payload: ListPayload) {
+    const filter = {
+      confirmed: true,
+      players: { $gte: parseInt(payload.minPlayers ?? '0') },
+      $expr: {
+        $gte: [{ $toLong: '$limit' }, new Long(payload.limit ?? '0')],
+      },
+    }
+
+    const boards = await cBoards
+      .find(filter)
+      .project({
+        id: 1,
+        address: 1,
+        chips: 1,
+        limit: 1,
+        players: 1,
+        createdAt: 1,
+      })
       .sort({ _id: -1 })
+      .skip((payload.page - 1) * 20)
+      .limit(20)
       .toArray()
+    const total = await cBoards.countDocuments(filter)
+
+    return { boards, total }
   }
 
   @Get('/:id')

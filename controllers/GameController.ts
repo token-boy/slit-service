@@ -113,7 +113,7 @@ class GameController {
     board.chips = (BigInt(board.chips) + chips).toString()
     await cBoards.updateOne(
       { id: boardId },
-      { $set: { chips: (BigInt(board.chips) + chips).toString() } }
+      { $set: { chips: (BigInt(board.chips) + chips).toString() }, $inc: { players: 1 }, }
     )
 
     // If player has staked enough chips, then add them to the players queue
