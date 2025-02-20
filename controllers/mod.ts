@@ -11,6 +11,7 @@ import BoardController from './BoardController.ts'
 import SessionController from './SessionController.ts'
 import ChipsController from './ChipsController.ts'
 import GameController from './GameController.ts'
+import BillController from './BillController.ts'
 
 // deno-lint-ignore no-explicit-any
 const Controllers: any[] = [
@@ -18,6 +19,7 @@ const Controllers: any[] = [
   ChipsController,
   BoardController,
   GameController,
+  BillController,
   SessionController,
   TxController,
 ]

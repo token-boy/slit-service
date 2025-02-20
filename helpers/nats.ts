@@ -20,8 +20,8 @@ class Nats {
     this.#nc = await connect({
       servers: Deno.env.get('NATS_SERVER'),
       authenticator: jwtAuthenticator(
-        Deno.env.get('NATS_DEALER_JWT') as string,
-        TE.encode(Deno.env.get('NATS_DEALER_NKEY'))
+        Deno.env.get('NATS_JWT_TOKEN') as string,
+        TE.encode(Deno.env.get('NATS_NKEY'))
       ),
     })
     this.#jsm = await jetstreamManager(this.#nc)

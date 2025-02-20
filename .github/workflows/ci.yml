@@ -51,14 +51,25 @@ jobs:
             docker pull ${{ env.IMAGE }}
             docker run --detach \
               --name=${{ env.PROJECT_NAME }}-${{ github.sha }} \
-              --label=${{ env.PROJECT_NAME }} \
               --mount=type=bind,source=/root/.config/slit/key,target=/app/key \
-              --env=SOLANA_RPC_URL=${{ secrets.SOLANA_RPC_URL }} \
-              --env=ACCESS_CONTROL_LIST=${{ secrets.ACCESS_CONTROL_LIST }} \
+
               --env=MONGO_URI=${{ secrets.MONGO_URI }} \
               --env=REDIS_HOSTNAME=${{ secrets.REDIS_HOSTNAME }} \
               --env=REDIS_PORT=${{ secrets.REDIS_PORT }} \
+              --env=REDIS_USERNAME=${{ secrets.REDIS_USERNAME }} \
               --env=REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }} \
+              --env=NATS_SERVER=${{ secrets.NATS_SERVER }} \
+              --env=NATS_JWT_TOKEN=${{ secrets.NATS_JWT_TOKEN }} \
+              --env=NATS_NKEY=${{ secrets.NATS_NKEY }} \
+              --env=ACCESS_CONTROL_LIST=${{ secrets.ACCESS_CONTROL_LIST }} \
+              --env=SOLANA_RPC_URL=${{ secrets.SOLANA_RPC_URL }} \
+              --env=R2_ENDPOINT=${{ secrets.R2_ENDPOINT }} \
+              --env=R2_ACCESS_KEY_ID=${{ secrets.R2_ACCESS_KEY_ID }} \
+              --env=R2_SECRET_ACCESS_KEY=${{ secrets.R2_SECRET_ACCESS_KEY }} \
               --network=main \
+              --label=traefik.enable=true \
+              --label=traefik.http.routers.${{ env.PROJECT_NAME }}.rule=Host\(\`api-slit.mxsyx.site\`\) \
+              --label=traefik.http.routers.${{ env.PROJECT_NAME }}.tls.certResolver=letsencrypt \
+              --label=traefik.http.routers.${{ env.PROJECT_NAME }}.service=${{ env.PROJECT_NAME }} \
+              --label=traefik.http.services.${{ env.PROJECT_NAME }}.loadbalancer.server.port=8000 \
               ${{ env.IMAGE }}
-            curl -if "http://localhost:10234/join?service=${{ env.PROJECT_NAME }}&port=8000&host=slit.mxsyx.site&updateDelay=300&stopTimeout=90"

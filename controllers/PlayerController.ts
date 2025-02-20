@@ -10,16 +10,25 @@ import { Controller, Get, Payload, Post, Put } from 'helpers/route.ts'
 import { Instruction, PROGRAM_ID } from 'helpers/constants.ts'
 import { buildTx, connection } from 'helpers/solana.ts'
 import { getPlayerAddress } from 'helpers/game.ts'
-import { cPlayers } from 'models'
+import { cPlayers, Player } from 'models'
 import auth from '../middlewares/auth.ts'
 import { Http404 } from 'helpers/http.ts'
-import { ObjectId } from 'mongodb'
+import { ObjectId, WithId } from 'mongodb'
 import { addTxEventListener } from './TxController.ts'
 import { z } from 'zod'
+import S3 from 'aws-sdk/clients/s3.js'
+import { decodeBase64 } from '@std/encoding'
+
+const s3 = new S3({
+  endpoint: Deno.env.get('R2_ENDPOINT'),
+  accessKeyId: Deno.env.get('R2_ACCESS_KEY_ID'),
+  secretAccessKey: Deno.env.get('R2_SECRET_ACCESS_KEY'),
+  signatureVersion: 'v4',
+})
 
 const UpdateProfilePayloadSchame = z.object({
   avatarUrl: z.string(),
-  nickname: z.string(),
+  nickname: z.string().max(24)
 })
 type UpdateProfilePayload = z.infer<typeof UpdateProfilePayloadSchame>
 
@@ -72,40 +81,58 @@ class PlayerController {
 
   @Get('/:id')
   async findById(ctx: Ctx) {
-    const player = await cPlayers.findOne({
-      _id: ObjectId.createFromHexString(ctx.params.id),
-    })
+    let player: WithId<Player> | null
+    if (ctx.params.id === 'profile') {
+      await auth(ctx)
+      player = await cPlayers.findOne({
+        owner: ctx.profile.address,
+      })
+    } else {
+      player = await cPlayers.findOne({
+        _id: ObjectId.createFromHexString(ctx.params.id),
+      })
+    }
     if (!player) {
       throw new Http404('Player does not exist')
     }
 
-    try {
-      await auth(ctx)
-      return player
-    } catch (_) {
-      return {
-        nickname: player.nickname,
-        avatarUrl: player.avatarUrl,
-      }
+    return {
+      nickname: player.nickname,
+      avatarUrl: player.avatarUrl,
     }
   }
 
-  @Put('', auth)
+  @Put('/profile', auth)
   @Payload(UpdateProfilePayloadSchame)
-  async updateProfile(payload: UpdateProfilePayload, ctx: Ctx) {
+  async updateProfile({ avatarUrl, nickname }: UpdateProfilePayload, ctx: Ctx) {
     const player = await cPlayers.findOne({ owner: ctx.profile.address })
     if (!player) {
       throw new Http404('Player does not exist')
     }
-    await cPlayers.updateOne(
-      { _id: player._id },
-      {
-        $set: {
-          avatarUrl: payload.avatarUrl,
-          nickname: payload.nickname,
-        },
-      }
-    )
+
+    if (avatarUrl.startsWith('data:image/webp')) {
+      const key = `avatars/${player._id}.webp`
+      const presignedUrl = await s3.getSignedUrlPromise('putObject', {
+        Bucket: 'slit',
+        Key: key,
+        Expires: 3600,
+      })
+      await fetch(presignedUrl, {
+        method: 'PUT',
+        body: decodeBase64(avatarUrl.replace('data:image/webp;base64,', '')),
+      })
+      await cPlayers.updateOne(
+        { _id: player._id },
+        {
+          $set: {
+            avatarUrl: `${key}?v=${Date.now()}`,
+            nickname,
+          },
+        }
+      )
+    } else {
+      await cPlayers.updateOne({ _id: player._id }, { $set: { nickname } })
+    }
   }
 }
 
