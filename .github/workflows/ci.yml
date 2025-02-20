@@ -52,7 +52,6 @@ jobs:
             docker run --detach \
               --name=${{ env.PROJECT_NAME }}-${{ github.sha }} \
               --mount=type=bind,source=/root/.config/slit/key,target=/app/key \
-
               --env=MONGO_URI=${{ secrets.MONGO_URI }} \
               --env=REDIS_HOSTNAME=${{ secrets.REDIS_HOSTNAME }} \
               --env=REDIS_PORT=${{ secrets.REDIS_PORT }} \
