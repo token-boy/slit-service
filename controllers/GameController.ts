@@ -152,7 +152,7 @@ class GameController {
             if (len >= 2) {
               this.#deal(boardId)
             } else {
-              console.log(`expired ${this.#nextHanderName}`);
+              console.log(`expired: ${this.#nextHanderName}`);
               
               await r.setex(
                 `board:${boardId}:${this.#nextHanderName}:timer`,
