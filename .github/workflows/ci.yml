@@ -69,3 +69,4 @@ jobs:
               --network=main \
               ${{ env.IMAGE }}
             curl -if "http://localhost:10234/join?service=${{ env.PROJECT_NAME }}&port=8000&host=api-slit.mxsyx.site&updateDelay=300&stopTimeout=90"
+ 
