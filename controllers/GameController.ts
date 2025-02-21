@@ -14,7 +14,9 @@ import { Controller, Get, Payload, Post } from 'helpers/route.ts'
 import { Bill, BillType, cBills, cBoards, cKeypairs, cPlayers } from 'models'
 import { Http400, Http404 } from 'helpers/http.ts'
 import {
+  COUNTDOWN,
   FEE_RATE,
+  HOSTNAME,
   Instruction,
   MAX_PLAYERS,
   PROGRAM_ID,
@@ -61,13 +63,12 @@ const RedeemPayloadSchema = z.object({
 type RedeemPayload = z.infer<typeof RedeemPayloadSchema>
 
 const INITIAL_HANDS: [number, number] = [0, 0]
-const COUNTDOWN = 30 // seconds
 const BIGINT_TWO = BigInt(2)
 
 @Controller('/v1/game')
 class GameController {
-  #handerName: string
-  #nextHanderName: string
+  #handerName = HOSTNAME
+  #nextHanderName = HOSTNAME
 
   constructor() {
     addTxEventListener(Instruction.Stake, this.#handleStakeConfirmed.bind(this))
@@ -76,7 +77,6 @@ class GameController {
       this.#handleRedeemConfirmed.bind(this)
     )
     this.#handleTimerExpired()
-    this.#handerName = this.#nextHanderName = Deno.env.get('HOSTNAME')!
   }
 
   async #handleStakeConfirmed(
@@ -144,14 +144,17 @@ class GameController {
           if (handerName !== this.#handerName || timer !== 'timer') {
             return
           }
-          // #handerKey
           const [turnSeatKey] = await r.zrange(`board:${boardId}:round`, 0, 0)
           if (!turnSeatKey) {
             const len = await r.zcount(`board:${boardId}:seats`, 0, Date.now())
             if (len >= 2) {
               this.#deal(boardId)
             } else {
-              await r.setex(`board:${boardId}:timer`, COUNTDOWN, '0')
+              await r.setex(
+                `board:${boardId}:${this.#nextHanderName}timer`,
+                COUNTDOWN,
+                '0'
+              )
             }
             return
           }

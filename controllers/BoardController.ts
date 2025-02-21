@@ -12,7 +12,7 @@ import { DiscardPolicy, RetentionPolicy } from '@nats-io/jetstream'
 import { z } from 'zod'
 
 import { Controller, Get, Payload, Post, QueryParams } from 'helpers/route.ts'
-import { Instruction, PROGRAM_ID, BOARD } from 'helpers/constants.ts'
+import { Instruction, PROGRAM_ID, BOARD, HOSTNAME, COUNTDOWN } from 'helpers/constants.ts'
 import { buildTx, connection } from 'helpers/solana.ts'
 import { Http400, Http404 } from 'helpers/http.ts'
 import { publishGameState, TE } from 'helpers/game.ts'
@@ -30,7 +30,7 @@ type CreatePayload = z.infer<typeof CreatePayloadSchama>
 const ListPayloadSchama = z.object({
   minPlayers: z.string().optional(),
   limit: z.string().optional(),
-  page: z.number({ coerce: true }). nonnegative().default(1),
+  page: z.number({ coerce: true }).nonnegative().default(1),
 })
 type ListPayload = z.infer<typeof ListPayloadSchama>
 
@@ -69,6 +69,8 @@ class BoardController {
     pl.set(`board:${id}:pot`, '0')
     pl.set(`board:${id}:roundCount`, '0')
     pl.hset(`board:${id}:settings`, 'limit', board.limit)
+    await r.setex(`board:${id}:${HOSTNAME}timer`, COUNTDOWN, '0')
+
     await pl.exec()
 
     // Global state stream

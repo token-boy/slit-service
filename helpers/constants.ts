@@ -37,3 +37,7 @@ export const FEE_VAULT_PDA = new PublicKey(
 )
 
 export const MAX_PLAYERS = 10
+
+export const COUNTDOWN = 30 // seconds
+
+export const HOSTNAME = Deno.env.get('HOSTNAME')!
