@@ -66,9 +66,5 @@ jobs:
               --env=R2_ACCESS_KEY_ID=${{ secrets.R2_ACCESS_KEY_ID }} \
               --env=R2_SECRET_ACCESS_KEY=${{ secrets.R2_SECRET_ACCESS_KEY }} \
               --network=main \
-              --label=traefik.enable=true \
-              --label=traefik.http.routers.${{ env.PROJECT_NAME }}.rule=Host\(\`api-slit.mxsyx.site\`\) \
-              --label=traefik.http.routers.${{ env.PROJECT_NAME }}.tls.certResolver=letsencrypt \
-              --label=traefik.http.routers.${{ env.PROJECT_NAME }}.service=${{ env.PROJECT_NAME }} \
-              --label=traefik.http.services.${{ env.PROJECT_NAME }}.loadbalancer.server.port=8000 \
               ${{ env.IMAGE }}
+            curl -if "http://localhost:10234/join?service=${{ env.PROJECT_NAME }}&port=8000&host=api-slit.mxsyx.site&updateDelay=300&stopTimeout=90"

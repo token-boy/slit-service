@@ -66,6 +66,9 @@ const BIGINT_TWO = BigInt(2)
 
 @Controller('/v1/game')
 class GameController {
+  #handerName: string
+  #nextHanderName: string
+
   constructor() {
     addTxEventListener(Instruction.Stake, this.#handleStakeConfirmed.bind(this))
     addTxEventListener(
@@ -73,6 +76,7 @@ class GameController {
       this.#handleRedeemConfirmed.bind(this)
     )
     this.#handleTimerExpired()
+    this.#handerName = this.#nextHanderName = Deno.env.get('HOSTNAME')!
   }
 
   async #handleStakeConfirmed(
@@ -113,7 +117,10 @@ class GameController {
     board.chips = (BigInt(board.chips) + chips).toString()
     await cBoards.updateOne(
       { id: boardId },
-      { $set: { chips: (BigInt(board.chips) + chips).toString() }, $inc: { players: 1 }, }
+      {
+        $set: { chips: (BigInt(board.chips) + chips).toString() },
+        $inc: { players: 1 },
+      }
     )
 
     // If player has staked enough chips, then add them to the players queue
@@ -126,34 +133,41 @@ class GameController {
   }
 
   async #handleTimerExpired() {
-    await rSub.subscribe('__keyevent@0__:expired')
-    rSub.on('message', async (_channel, message) => {
-      try {
-        const [_, boardId, timer] = message.split(':')
-        if (timer !== 'timer') {
-          return
-        }
-        const [turnSeatKey] = await r.zrange(`board:${boardId}:round`, 0, 0)
-        if (!turnSeatKey) {
-          const len = await r.zcount(`board:${boardId}:seats`, 0, Date.now())
-          if (len >= 2) {
-            this.#deal(boardId)
-          } else {
-            await r.setex(`board:${boardId}:timer`, COUNTDOWN, '0')
+    await rSub.subscribe('__keyevent@0__:expired', 'deployment')
+    rSub.on('message', async (channel, message) => {
+      // New instance online
+      if (channel === 'depolymennt') {
+        this.#nextHanderName = message
+      } else if (channel === '__keyevent@0__:expired') {
+        try {
+          const [_, boardId, handerName, timer] = message.split(':')
+          if (handerName !== this.#handerName || timer !== 'timer') {
+            return
           }
-          return
+          // #handerKey
+          const [turnSeatKey] = await r.zrange(`board:${boardId}:round`, 0, 0)
+          if (!turnSeatKey) {
+            const len = await r.zcount(`board:${boardId}:seats`, 0, Date.now())
+            if (len >= 2) {
+              this.#deal(boardId)
+            } else {
+              await r.setex(`board:${boardId}:timer`, COUNTDOWN, '0')
+            }
+            return
+          }
+          const seat = await r.getJSON<Seat>(
+            `board:${boardId}:seat:${turnSeatKey}`
+          )
+          if (!seat) {
+            return
+          }
+          this.#turn(boardId, turnSeatKey, 0n)
+        } catch (error) {
+          log.error(error)
         }
-        const seat = await r.getJSON<Seat>(
-          `board:${boardId}:seat:${turnSeatKey}`
-        )
-        if (!seat) {
-          return
-        }
-        this.#turn(boardId, turnSeatKey, 0n)
-      } catch (error) {
-        log.error(error)
       }
     })
+    await r.publish('depolymennt', this.#handerName)
   }
 
   async #handleRedeemConfirmed(
@@ -308,7 +322,7 @@ class GameController {
     pl.llen(`board:${boardId}:cards`)
     pl.get(`board:${boardId}:pot`)
     pl.zrange(`board:${boardId}:round`, 0, 0)
-    pl.get(`board:${boardId}:timer`)
+    pl.get(`board:${boardId}:${this.#handerName}:timer`)
     const [seatKeys, deckCount, pot, [turnSeatKey], turnExpireAt] =
       await pl.flush()
     pl = r.pipeline()
@@ -393,7 +407,11 @@ class GameController {
     pl.lpush(`board:${boardId}:cards`, ...cards)
     pl.set(`board:${boardId}:pot`, pot.toString())
     pl.incr(`board:${boardId}:roundCount`)
-    pl.setex(`board:${boardId}:timer`, COUNTDOWN, Date.now() + COUNTDOWN * 1000)
+    pl.setex(
+      `board:${boardId}:${this.#nextHanderName}:timer`,
+      COUNTDOWN,
+      Date.now() + COUNTDOWN * 1000
+    )
     await pl.flush()
 
     await this.#sync(boardId)
@@ -506,7 +524,7 @@ class GameController {
     // Check if this round is over
     if (seatKey && BigInt(potStr) > 0n) {
       await r.setex(
-        `board:${boardId}:timer`,
+        `board:${boardId}:${this.#nextHanderName}:timer`,
         COUNTDOWN,
         Date.now() + COUNTDOWN * 1000
       )
