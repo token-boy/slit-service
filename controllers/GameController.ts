@@ -138,8 +138,6 @@ class GameController {
       // New instance online
       if (channel === 'deployment') {
         this.#nextHanderName = message
-        console.log(`New instance online: ${message}`);
-        
       } else if (channel === '__keyevent@0__:expired') {
         try {
           const [_, boardId, handerName, timer] = message.split(':')
@@ -152,8 +150,6 @@ class GameController {
             if (len >= 2) {
               this.#deal(boardId)
             } else {
-              console.log(`expired: ${this.#nextHanderName}`);
-              
               await r.setex(
                 `board:${boardId}:${this.#nextHanderName}:timer`,
                 COUNTDOWN,
