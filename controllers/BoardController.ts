@@ -69,7 +69,7 @@ class BoardController {
     pl.set(`board:${id}:pot`, '0')
     pl.set(`board:${id}:roundCount`, '0')
     pl.hset(`board:${id}:settings`, 'limit', board.limit)
-    await r.setex(`board:${id}:${HOSTNAME}timer`, COUNTDOWN, '0')
+    pl.setex(`board:${id}:${HOSTNAME}timer`, COUNTDOWN, '0')
 
     await pl.exec()
 
