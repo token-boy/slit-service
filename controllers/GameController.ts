@@ -135,8 +135,6 @@ class GameController {
   async #handleTimerExpired() {
     await rSub.subscribe('__keyevent@0__:expired', 'deployment')
     rSub.on('message', async (channel, message) => {
-      console.log(channel, message, this.#handerName, this.#nextHanderName);
-      
       // New instance online
       if (channel === 'depolymennt') {
         this.#nextHanderName = message
@@ -153,7 +151,7 @@ class GameController {
               this.#deal(boardId)
             } else {
               await r.setex(
-                `board:${boardId}:${this.#nextHanderName}timer`,
+                `board:${boardId}:${this.#nextHanderName}:timer`,
                 COUNTDOWN,
                 '0'
               )
