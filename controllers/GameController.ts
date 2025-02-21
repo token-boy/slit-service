@@ -113,20 +113,22 @@ class GameController {
       createdAt: Date.now(),
     })
 
-    // Update board chips
-    board.chips = (BigInt(board.chips) + chips).toString()
-    await cBoards.updateOne(
-      { id: boardId },
-      {
-        $set: { chips: (BigInt(board.chips) + chips).toString() },
-        $inc: { players: 1 },
-      }
-    )
-
     // If player has staked enough chips, then add them to the players queue
     if (BigInt(seat.chips) >= BigInt(board.limit) * BIGINT_TWO) {
       await r.zadd(`board:${boardId}:seats`, Date.now(), seatKey)
     }
+
+    // Update board info
+    const len = await r.zcount(`board:${boardId}:seats`, 0, Date.now())
+    cBoards.updateOne(
+      { id: boardId },
+      {
+        $set: {
+          chips: (BigInt(board.chips) + chips).toString(),
+          players: len,
+        },
+      }
+    )
 
     await r.setJSON(`board:${boardId}:seat:${seatKey}`, seat)
     this.#sync(boardId)
@@ -692,13 +694,14 @@ class GameController {
         })
 
         // Update board state
+        const len = await r.zcount(`board:${boardId}:seats`, 0, Date.now())
         cBoards.updateOne(
           { id: boardId },
           {
             $set: {
               chips: (BigInt(board.chips) - BigInt(seat!.chips)).toString(),
+              players: len,
             },
-            $inc: { players: -1 },
           }
         )
       }
