@@ -48,7 +48,7 @@ export function createAccessToken(address: string) {
       iss: 'slitgame.app',
       sub: address,
       aud: audience,
-      exp: now + 3600 * 24 * 7,
+      exp: now + 3600 * 24 * 7 * 1000,
       iat: now,
     },
     key
