@@ -136,7 +136,7 @@ class GameController {
     await rSub.subscribe('__keyevent@0__:expired', 'deployment')
     rSub.on('message', async (channel, message) => {
       // New instance online
-      if (channel === 'depolymennt') {
+      if (channel === 'deployment') {
         this.#nextHanderName = message
       } else if (channel === '__keyevent@0__:expired') {
         try {
@@ -170,7 +170,7 @@ class GameController {
         }
       }
     })
-    await r.publish('depolymennt', this.#handerName)
+    await r.publish('deployment', this.#handerName)
   }
 
   async #handleRedeemConfirmed(
